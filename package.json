@@ -1,7 +1,7 @@
 {
-	"name": "obsidian-sample-plugin",
-	"version": "1.0.0",
-	"description": "This is a sample plugin for Obsidian (https://obsidian.md)",
+	"name": "obsidian-language-learning",
+	"version": "0.1.0",
+	"description": "Obsidian plugin for language learning: .chapter.md notes read a page at a time, annotated sentences, and spaced review.",
 	"main": "main.js",
 	"type": "module",
 	"scripts": {

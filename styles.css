@@ -1,8 +1,693 @@
+/* Chapter view: a .chapter file read one page at a time. */
+
+/* The reader lays itself out, so the pane gives it the room and no padding. */
+.workspace-leaf-content[data-type='ll-chapter-view'] .view-content {
+	display: flex;
+	flex-direction: column;
+	padding: 0;
+	overflow: hidden;
+}
+
+.ll-chapter {
+	flex: 1;
+	min-height: 0;
+	display: flex;
+	flex-direction: column;
+	gap: var(--size-4-2);
+	padding: var(--size-4-4) var(--size-4-4) var(--size-4-3);
+	outline: none;
+}
+
+.ll-chapter:focus-visible {
+	box-shadow: inset 0 0 0 2px var(--interactive-accent);
+}
+
+/* The scroller, so a page longer than the pane still reads. */
+.ll-chapter__page {
+	flex: 1;
+	min-height: 0;
+	overflow-y: auto;
+	overflow-x: hidden;
+	line-height: var(--line-height-normal);
+}
+
+/* The page itself, held to a readable column. */
+.ll-chapter__sheet {
+	max-width: var(--file-line-width, 700px);
+	margin: 0 auto;
+	padding: var(--size-4-2) 0;
+}
+
+.ll-chapter.is-paper .ll-chapter__sheet {
+	background-color: var(--background-primary);
+	border: 1px solid var(--background-modifier-border);
+	border-radius: var(--radius-m);
+	box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+	padding: var(--size-4-6) var(--size-4-8);
+}
+
+/* The rendered markdown should not add its own outer spacing. */
+.ll-chapter__sheet > :first-child {
+	margin-top: 0;
+}
+
+.ll-chapter__sheet > :last-child {
+	margin-bottom: 0;
+}
+
+.ll-chapter__empty {
+	color: var(--text-muted);
+	font-style: italic;
+	padding: var(--size-4-2) 0;
+}
+
+.ll-chapter__nav {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	gap: var(--size-4-2);
+	padding-top: var(--size-4-2);
+	border-top: 1px solid var(--background-modifier-border);
+}
+
+.ll-chapter__nav-button:disabled {
+	opacity: 0.35;
+	cursor: default;
+}
+
+.ll-chapter__counter {
+	display: flex;
+	align-items: center;
+	gap: var(--size-4-1);
+	font-size: var(--font-ui-small);
+	color: var(--text-muted);
+	font-variant-numeric: tabular-nums;
+}
+
+.ll-chapter__input {
+	width: 3.5em;
+	text-align: center;
+	padding: var(--size-4-1);
+	font-size: var(--font-ui-small);
+	font-variant-numeric: tabular-nums;
+}
+
+/* Hide the number spinners; the arrows already step through pages. */
+.ll-chapter__input::-webkit-inner-spin-button,
+.ll-chapter__input::-webkit-outer-spin-button {
+	appearance: none;
+	margin: 0;
+}
+
+/* Voice recorder */
+
+.ll-record {
+	display: flex;
+	flex-direction: column;
+	gap: var(--size-4-4);
+	padding-top: var(--size-4-2);
+}
+
+.ll-record__status {
+	display: flex;
+	align-items: center;
+	gap: var(--size-4-2);
+}
+
+.ll-record__dot {
+	width: 10px;
+	height: 10px;
+	border-radius: 50%;
+	background-color: var(--text-error);
+	animation: ll-record-pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes ll-record-pulse {
+	0%, 100% { opacity: 1; }
+	50% { opacity: 0.25; }
+}
+
+.ll-record__timer {
+	font-size: var(--font-ui-large);
+	font-variant-numeric: tabular-nums;
+	color: var(--text-normal);
+}
+
+.ll-record__hint {
+	color: var(--text-muted);
+	font-size: var(--font-ui-small);
+}
+
+.ll-record__preview {
+	width: 100%;
+}
+
+.ll-record__actions {
+	display: flex;
+	gap: var(--size-4-2);
+	justify-content: flex-end;
+	flex-wrap: wrap;
+}
+
+/* Slash menu */
+
+.ll-slash__item {
+	display: flex;
+	align-items: center;
+	gap: var(--size-4-2);
+}
+
+.ll-slash__icon {
+	display: flex;
+	color: var(--text-muted);
+}
+
+.ll-slash__desc {
+	font-size: var(--font-ui-smaller);
+	color: var(--text-muted);
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.ll-record__dot { animation: none; }
+}
+
+/* Export dialog */
+
+.ll-export__summary {
+	color: var(--text-muted);
+	margin-top: 0;
+}
+
+.ll-export__warning {
+	color: var(--text-warning);
+	font-size: var(--font-ui-small);
+}
+
+.ll-export__actions {
+	display: flex;
+	gap: var(--size-4-2);
+	justify-content: flex-end;
+	margin-top: var(--size-4-4);
+}
+
+/* Annotated sentence: one muted colour per grammatical role. */
+
 /*
+ * The defaults sit on body, not on the block, so that a colour the user
+ * picks can be written onto body as an inline value and outrank them.
+ * Core roles hold a little more colour, so the skeleton reads first.
+ */
+body {
+	--ll-subject: hsl(222, 42%, 46%);
+	--ll-verb: hsl(12, 45%, 47%);
+	--ll-object: hsl(168, 38%, 34%);
+	--ll-complement: hsl(288, 26%, 50%);
+	--ll-modifier: hsl(36, 38%, 42%);
+	--ll-connector: hsl(200, 28%, 44%);
+	--ll-marker: hsl(78, 28%, 38%);
+	--ll-negation: hsl(340, 33%, 49%);
+}
 
-This CSS file will be included with your plugin, and
-available in the app when your plugin is enabled.
+body.theme-dark {
+	--ll-subject: hsl(222, 38%, 70%);
+	--ll-verb: hsl(12, 42%, 66%);
+	--ll-object: hsl(168, 30%, 58%);
+	--ll-complement: hsl(288, 26%, 70%);
+	--ll-modifier: hsl(36, 40%, 62%);
+	--ll-connector: hsl(200, 26%, 64%);
+	--ll-marker: hsl(78, 24%, 60%);
+	--ll-negation: hsl(340, 32%, 70%);
+}
 
-If your plugin does not need CSS, delete this file.
+/* A block holds one sentence or several, so they need room between them. */
+.ll-sentences {
+	display: flex;
+	flex-direction: column;
+	gap: var(--size-4-3);
+}
 
-*/
+.ll-sentence {
+	--ll-tok-colour: var(--text-normal);
+	display: flex;
+	flex-direction: column;
+	gap: var(--size-4-1);
+}
+
+.ll-sentence__text {
+	font-size: 1em;
+	line-height: 1.8;
+	white-space: pre-wrap;
+}
+
+.ll-tok {
+	color: var(--ll-tok-colour);
+	border-radius: var(--radius-s);
+	padding: 0 1px;
+}
+
+.ll-tok.is-explained {
+	cursor: help;
+	outline: none;
+}
+
+.ll-tok.is-active {
+	background-color: var(--background-modifier-hover);
+}
+
+.ll-tok.is-explained:focus-visible {
+	box-shadow: 0 0 0 2px var(--background-modifier-border-focus);
+}
+
+.ll-role-subject { --ll-tok-colour: var(--ll-subject); }
+.ll-role-verb { --ll-tok-colour: var(--ll-verb); }
+.ll-role-object { --ll-tok-colour: var(--ll-object); }
+.ll-role-complement { --ll-tok-colour: var(--ll-complement); }
+.ll-role-modifier { --ll-tok-colour: var(--ll-modifier); }
+.ll-role-connector { --ll-tok-colour: var(--ll-connector); }
+.ll-role-marker { --ll-tok-colour: var(--ll-marker); }
+.ll-role-negation { --ll-tok-colour: var(--ll-negation); }
+
+.ll-role-punct,
+.ll-role-other {
+	--ll-tok-colour: var(--text-faint);
+}
+
+.ll-sentence__gloss {
+	color: var(--text-muted);
+	font-size: var(--font-ui-small);
+}
+
+.ll-sentence__warning {
+	color: var(--text-warning);
+	font-size: var(--font-ui-smaller);
+}
+
+/* The review line: what is left of the card today, and how to check it. */
+
+.ll-review {
+	--ll-review-tint: var(--text-faint);
+	display: flex;
+	align-items: center;
+	flex-wrap: wrap;
+	gap: var(--size-4-2);
+	padding-top: var(--size-4-1);
+}
+
+.ll-review[data-state='ok'] {
+	--ll-review-tint: var(--color-green);
+}
+
+.ll-review[data-state='due'] {
+	--ll-review-tint: var(--color-orange);
+}
+
+.ll-review__curve {
+	flex: 0 0 64px;
+	height: 4px;
+	border-radius: var(--radius-s);
+	background-color: var(--background-modifier-border);
+	overflow: hidden;
+}
+
+.ll-review__fill {
+	width: var(--ll-review-recall, 0%);
+	height: 100%;
+	background-color: var(--ll-review-tint);
+	transition: width 120ms ease-out;
+}
+
+.ll-review__status {
+	font-size: var(--font-ui-smaller);
+	color: var(--text-muted);
+	font-variant-numeric: tabular-nums;
+}
+
+.ll-review__grades {
+	display: flex;
+	gap: var(--size-4-1);
+	margin-left: auto;
+}
+
+.ll-review__grade,
+.ll-review__when {
+	height: var(--size-4-6);
+	font-size: var(--font-ui-smaller);
+	color: var(--text-muted);
+	background-color: transparent;
+	box-shadow: none;
+	border: 1px solid var(--background-modifier-border);
+}
+
+.ll-review__grade {
+	padding: 0 var(--size-4-2);
+}
+
+.ll-review__when {
+	display: flex;
+	align-items: center;
+	padding: 0 var(--size-4-1);
+	color: var(--text-faint);
+}
+
+.ll-review__grade:hover,
+.ll-review__when:hover {
+	color: var(--text-normal);
+	background-color: var(--background-modifier-hover);
+}
+
+.ll-review__grade.mod-again:hover {
+	color: var(--color-red);
+}
+
+.ll-review__grade.mod-easy:hover {
+	color: var(--color-green);
+}
+
+.ll-review__when .svg-icon {
+	width: 14px;
+	height: 14px;
+}
+
+.ll-review__date {
+	font-size: var(--font-ui-smaller);
+	padding: var(--size-4-1);
+}
+
+/* The note that opens on hover, or on a tap. */
+
+.ll-note {
+	position: fixed;
+	z-index: var(--layer-popover);
+	max-width: 320px;
+	padding: var(--size-4-2) var(--size-4-3);
+	border: 1px solid var(--background-modifier-border);
+	border-radius: var(--radius-m);
+	background-color: var(--background-secondary);
+	box-shadow: var(--shadow-s);
+	pointer-events: none;
+}
+
+.ll-note__word {
+	font-weight: var(--font-semibold);
+}
+
+.ll-note__meta {
+	color: var(--text-muted);
+	font-size: var(--font-ui-smaller);
+}
+
+.ll-note__body {
+	margin-top: var(--size-4-1);
+	font-size: var(--font-ui-small);
+}
+
+.ll-note__body > :first-child { margin-top: 0; }
+.ll-note__body > :last-child { margin-bottom: 0; }
+
+/* The card list: every card in the vault, and the words they are made of. */
+
+.ll-cards {
+	display: flex;
+	flex-direction: column;
+	gap: var(--size-4-2);
+	height: 100%;
+}
+
+.ll-cards__tabs {
+	display: flex;
+	gap: var(--size-4-1);
+}
+
+.ll-cards__tab {
+	flex: 1;
+	height: var(--size-4-7);
+	font-size: var(--font-ui-small);
+	color: var(--text-muted);
+	background-color: transparent;
+	box-shadow: none;
+	border: 1px solid var(--background-modifier-border);
+}
+
+.ll-cards__tab:hover {
+	color: var(--text-normal);
+	background-color: var(--background-modifier-hover);
+}
+
+.ll-cards__tab.is-active {
+	color: var(--text-normal);
+	background-color: var(--background-modifier-active-hover);
+	border-color: var(--background-modifier-border-focus);
+}
+
+.ll-cards__reindex {
+	flex: none;
+	display: flex;
+	align-items: center;
+	height: var(--size-4-7);
+	padding: 0 var(--size-4-2);
+	color: var(--text-faint);
+	background-color: transparent;
+	box-shadow: none;
+	border: 1px solid var(--background-modifier-border);
+}
+
+.ll-cards__reindex:hover {
+	color: var(--text-normal);
+	background-color: var(--background-modifier-hover);
+}
+
+.ll-cards__reindex .svg-icon {
+	width: 14px;
+	height: 14px;
+}
+
+.ll-cards__reindex.is-busy {
+	color: var(--text-accent);
+	pointer-events: none;
+}
+
+.ll-cards__reindex.is-busy .svg-icon {
+	animation: ll-spin 900ms linear infinite;
+}
+
+@keyframes ll-spin {
+	to {
+		transform: rotate(360deg);
+	}
+}
+
+.ll-cards__filter {
+	width: 100%;
+	font-size: var(--font-ui-small);
+}
+
+.ll-cards__summary {
+	font-size: var(--font-ui-smaller);
+	color: var(--text-muted);
+	font-variant-numeric: tabular-nums;
+}
+
+.ll-cards__body {
+	flex: 1;
+	overflow-y: auto;
+	margin: 0 calc(-1 * var(--size-4-2));
+}
+
+.ll-cards__section {
+	display: flex;
+	justify-content: space-between;
+	position: sticky;
+	top: 0;
+	z-index: 1;
+	padding: var(--size-4-2);
+	font-size: var(--font-ui-smaller);
+	text-transform: uppercase;
+	letter-spacing: 0.05em;
+	color: var(--text-faint);
+	background-color: var(--background-secondary);
+}
+
+.ll-cards__count {
+	font-variant-numeric: tabular-nums;
+}
+
+.ll-cards__more,
+.ll-cards__empty {
+	padding: var(--size-4-2);
+	font-size: var(--font-ui-smaller);
+	color: var(--text-faint);
+	font-style: italic;
+}
+
+/* One card in the list. */
+
+.ll-card {
+	display: flex;
+	flex-direction: column;
+	gap: var(--size-4-1);
+	padding: var(--size-4-2);
+	border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.ll-card.is-checked {
+	opacity: 0.55;
+}
+
+.ll-card > .ll-review__curve {
+	flex: none;
+	width: 100%;
+	height: 3px;
+}
+
+.ll-card[data-state='ok'] {
+	--ll-review-tint: var(--color-green);
+}
+
+.ll-card[data-state='due'] {
+	--ll-review-tint: var(--color-orange);
+}
+
+.ll-card__main {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+}
+
+.ll-card__text {
+	padding: 0;
+	height: auto;
+	text-align: left;
+	white-space: normal;
+	color: var(--text-normal);
+	background-color: transparent;
+	box-shadow: none;
+	cursor: pointer;
+}
+
+.ll-card__text:hover {
+	color: var(--text-accent);
+	background-color: transparent;
+}
+
+.ll-card__gloss {
+	font-size: var(--font-ui-smaller);
+	color: var(--text-muted);
+}
+
+.ll-card__meta {
+	font-size: var(--font-ui-smaller);
+	color: var(--text-faint);
+	font-variant-numeric: tabular-nums;
+}
+
+/* The word index: a table, and the cards each word opens onto. */
+
+.ll-index {
+	width: 100%;
+	border-collapse: collapse;
+	font-size: var(--font-ui-small);
+}
+
+.ll-index thead th {
+	position: sticky;
+	top: 0;
+	z-index: 1;
+	padding: var(--size-4-1) var(--size-4-2);
+	text-align: left;
+	font-weight: var(--font-normal);
+	color: var(--text-faint);
+	background-color: var(--background-secondary);
+	border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.ll-index__sort {
+	padding: 0;
+	height: auto;
+	font-size: var(--font-ui-smaller);
+	color: var(--text-faint);
+	background-color: transparent;
+	box-shadow: none;
+	cursor: pointer;
+}
+
+.ll-index__sort:hover {
+	color: var(--text-normal);
+	background-color: transparent;
+}
+
+.ll-index__sort.is-active {
+	color: var(--text-normal);
+}
+
+.ll-index__row {
+	cursor: pointer;
+}
+
+.ll-index__row td {
+	padding: var(--size-4-1) var(--size-4-2);
+	border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.ll-index__row:hover td {
+	background-color: var(--background-modifier-hover);
+}
+
+.ll-index__row.is-open td {
+	background-color: var(--background-modifier-active-hover);
+	border-bottom-color: transparent;
+}
+
+.ll-index__row:focus-visible {
+	outline: none;
+	box-shadow: inset 0 0 0 2px var(--background-modifier-border-focus);
+}
+
+.ll-index__pos,
+.ll-index__num {
+	font-size: var(--font-ui-smaller);
+	color: var(--text-faint);
+}
+
+.ll-index__num {
+	text-align: right;
+	font-variant-numeric: tabular-nums;
+}
+
+.ll-index__cards td {
+	padding: 0 var(--size-4-2) var(--size-4-2) var(--size-4-3);
+	border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.ll-index__card {
+	display: flex;
+	flex-direction: column;
+	align-items: flex-start;
+	gap: 1px;
+	width: 100%;
+	height: auto;
+	padding: var(--size-4-1);
+	text-align: left;
+	white-space: normal;
+	background-color: transparent;
+	box-shadow: none;
+	cursor: pointer;
+}
+
+.ll-index__card:hover {
+	background-color: var(--background-modifier-hover);
+}
+
+.ll-index__sentence {
+	color: var(--text-normal);
+}
+
+.ll-index__where {
+	font-size: var(--font-ui-smaller);
+	color: var(--text-accent);
+}
+
+.ll-index__id {
+	font-family: var(--font-monospace);
+	font-size: var(--font-ui-smaller);
+	color: var(--text-faint);
+}

@@ -1,114 +1,127 @@
-import {
-	Editor,
-	MarkdownView,
-	MarkdownFileInfo,
-	Modal,
-	Notice,
-	Plugin,
-} from 'obsidian';
+import { Plugin, TFile } from 'obsidian';
 import {
 	DEFAULT_SETTINGS,
-	MyPluginSettings,
-	SampleSettingTab,
+	LanguageLearningSettings,
+	LanguageLearningSettingTab,
 } from './settings';
+import { ChapterStateStore } from './chapter/state';
+import { ChapterFileView, positionKey } from './chapter/view';
+import { registerChapterToggle } from './chapter/toggle';
+import { isChapterFile } from './chapter/file';
+import { registerCommands } from './commands';
+import { SlashSuggest } from './ui/slash-suggest';
+import { registerImagePaste } from './images/paste';
+import { CardIndex } from './review/card-index';
+import { CARDS_VIEW_TYPE, CardsView } from './review/cards-view';
+import { ReviewStore } from './review/store';
+import { openCardsView } from './commands/open-cards';
+import {
+	COLOURABLE_ROLES,
+	roleVar,
+	validColour,
+} from './sentence/palette';
+import { SentenceView } from './sentence/view';
+import {
+	CHAPTER_VIEW_TYPE,
+	HOVER_SOURCE,
+	SENTENCE_BLOCK_LANG,
+} from './utils/constants';
+import { PluginData } from './types';
 
-// Remember to rename these classes and interfaces!
-
-export default class MyPlugin extends Plugin {
-	settings!: MyPluginSettings;
+export default class LanguageLearningPlugin extends Plugin {
+	settings!: LanguageLearningSettings;
+	state!: ChapterStateStore;
+	reviews!: ReviewStore;
+	index!: CardIndex;
 
 	async onload() {
-		await this.loadSettings();
+		await this.loadPluginData();
 
-		// This creates an icon in the left ribbon.
-		this.addRibbonIcon('dice', 'Sample', (_evt: MouseEvent) => {
-			// Called when the user clicks the icon.
-			new Notice('This is a notice!');
+		this.reviews = new ReviewStore(this);
+		await this.reviews.load();
+		this.register(() => void this.reviews.saveNow());
+
+		this.index = new CardIndex(this);
+		this.registerView(CARDS_VIEW_TYPE, (leaf) => new CardsView(leaf, this));
+		// Reading every note is for after the vault is up, never during load.
+		this.app.workspace.onLayoutReady(() => {
+			this.index.watch();
+			void this.index.start();
+		});
+		this.register(() => void this.index.saveNow());
+		this.addRibbonIcon('gallery-vertical-end', 'Language cards', () => {
+			void openCardsView(this);
 		});
 
-		// This adds a status bar item to the bottom of the app. Does not work on mobile apps.
-		const statusBarItemEl = this.addStatusBarItem();
-		statusBarItemEl.setText('Status bar text');
-
-		// This adds a simple command that can be triggered anywhere
-		this.addCommand({
-			id: 'open-modal-simple',
-			name: 'Open modal (simple)',
-			callback: () => {
-				new SampleModal(this.app).open();
-			},
-		});
-		// This adds an editor command that can perform some operation on the current editor instance
-		this.addCommand({
-			id: 'replace-selected',
-			name: 'Replace selected content',
-			editorCallback: (
-				editor: Editor,
-				_ctx: MarkdownView | MarkdownFileInfo,
-			) => {
-				editor.replaceSelection('Sample editor command');
-			},
-		});
-		// This adds a complex command that can check whether the current state of the app allows execution of the command
-		this.addCommand({
-			id: 'open-modal-complex',
-			name: 'Open modal (complex)',
-			checkCallback: (checking: boolean) => {
-				// Conditions to check
-				const markdownView =
-					this.app.workspace.getActiveViewOfType(MarkdownView);
-				if (markdownView) {
-					// If checking is true, we're simply "checking" if the command can be run.
-					// If checking is false, then we want to actually perform the operation.
-					if (!checking) {
-						new SampleModal(this.app).open();
-					}
-
-					// This command will only show up in Command Palette when the check function returns true
-					return true;
+		// A .chapter.md note is read a page at a time; the header button opens
+		// the same file in the normal editor, and back again.
+		this.registerView(
+			CHAPTER_VIEW_TYPE,
+			(leaf) => new ChapterFileView(leaf, this),
+		);
+		registerChapterToggle(this);
+		this.registerEvent(
+			this.app.vault.on('rename', (file, oldPath) => {
+				if (file instanceof TFile && isChapterFile(file)) {
+					this.state.rename(positionKey(oldPath), positionKey(file.path));
 				}
-				return false;
+			}),
+		);
+
+		this.registerMarkdownCodeBlockProcessor(
+			SENTENCE_BLOCK_LANG,
+			(source, el, ctx) => {
+				ctx.addChild(new SentenceView(this, source, el, ctx));
 			},
+		);
+
+		// Lets the Page preview core plugin show previews for links on a page.
+		this.registerHoverLinkSource(HOVER_SOURCE, {
+			display: 'Language learning',
+			defaultMod: false,
 		});
 
-		// This adds a settings tab so the user can configure various aspects of the plugin
-		this.addSettingTab(new SampleSettingTab(this.app, this));
+		this.registerEditorSuggest(new SlashSuggest(this));
+		registerImagePaste(this);
 
-		// If the plugin hooks up any global DOM events (on parts of the app that doesn't belong to this plugin)
-		// Using this function will automatically remove the event listener when this plugin is disabled.
-		this.registerDomEvent(activeDocument, 'click', (_evt: MouseEvent) => {
-			new Notice('Click');
-		});
-
-		// When registering intervals, this function will automatically clear the interval when the plugin is disabled.
-		this.registerInterval(
-			window.setInterval(() => console.log('setInterval'), 5 * 60 * 1000),
-		);
+		this.applyRoleColours();
+		this.register(() => this.clearRoleColours());
+		registerCommands(this);
+		this.addSettingTab(new LanguageLearningSettingTab(this.app, this));
 	}
 
-	onunload() {}
-
-	async loadSettings() {
-		this.settings = Object.assign(
-			{},
-			DEFAULT_SETTINGS,
-			(await this.loadData()) as Partial<MyPluginSettings>,
-		);
+	private async loadPluginData() {
+		const data = (await this.loadData()) as Partial<PluginData> | null;
+		this.settings = Object.assign({}, DEFAULT_SETTINGS, data?.settings);
+		// Object.assign copies the reference, so give this map its own object.
+		this.settings.roleColours = { ...this.settings.roleColours };
+		this.state = new ChapterStateStore(this, data?.positions ?? {});
 	}
 
-	async saveSettings() {
-		await this.saveData(this.settings);
+	/**
+	 * Write the user's role colours onto the document. A role left alone keeps
+	 * the stylesheet default, which follows the theme.
+	 */
+	applyRoleColours() {
+		const { style } = document.body;
+		for (const role of COLOURABLE_ROLES) {
+			const colour = validColour(this.settings.roleColours[role]);
+			if (colour) style.setProperty(roleVar(role), colour);
+			else style.removeProperty(roleVar(role));
+		}
 	}
-}
 
-class SampleModal extends Modal {
-	onOpen() {
-		const { contentEl } = this;
-		contentEl.setText('Woah!');
+	private clearRoleColours() {
+		for (const role of COLOURABLE_ROLES) {
+			document.body.style.removeProperty(roleVar(role));
+		}
 	}
 
-	onClose() {
-		const { contentEl } = this;
-		contentEl.empty();
+	async savePluginData() {
+		const data: PluginData = {
+			settings: this.settings,
+			positions: this.state.getPositions(),
+		};
+		await this.saveData(data);
 	}
 }

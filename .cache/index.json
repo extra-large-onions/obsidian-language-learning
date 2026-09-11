@@ -1,0 +1,20 @@
+{
+	"version": 1,
+	"cards": {
+		"9w1eg22k": {"text":"저는 사과를 먹었어요.","gloss":"I ate an apple.","places":[{"path":"Language learning demo.md","line":51,"index":0}]},
+		"bfo4fcf6": {"text":"가정 폭력에 법원이나 들락거리고","gloss":"Frequenting courts over domestic violence","places":[{"path":"Language learning demo.md","line":3,"index":0}]}
+	},
+	"tokens": {
+		"가정": {"pos":["noun"],"cards":["bfo4fcf6"]},
+		"는": {"pos":["particle"],"cards":["9w1eg22k"]},
+		"들락거리다": {"pos":["verb"],"cards":["bfo4fcf6"]},
+		"를": {"pos":["particle"],"cards":["9w1eg22k"]},
+		"먹다": {"pos":["verb"],"cards":["9w1eg22k"]},
+		"법원": {"pos":["noun"],"cards":["bfo4fcf6"]},
+		"사과": {"pos":["noun"],"cards":["9w1eg22k"]},
+		"에": {"pos":["particle"],"cards":["bfo4fcf6"]},
+		"이나": {"pos":["particle"],"cards":["bfo4fcf6"]},
+		"저": {"pos":["pronoun"],"cards":["9w1eg22k"]},
+		"폭력": {"pos":["noun"],"cards":["bfo4fcf6"]}
+	}
+}
