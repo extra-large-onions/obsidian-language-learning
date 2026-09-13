@@ -13,12 +13,25 @@ import { Page } from '../types';
 import { splitPages, stripFrontmatter } from './parser';
 import { showAsMarkdown } from './toggle';
 import { WriteTarget, findTaskLines, writeTaskMark } from './tasks';
-import { clamp } from '../utils/helpers';
+import {
+	CardName,
+	nameCard,
+	readPageId,
+	stripPageId,
+} from '../review/page-card';
+import { renderReviewLine } from '../review/review-line';
+import { clamp, hashString } from '../utils/helpers';
 import { CHAPTER_VIEW_TYPE, HOVER_SOURCE } from '../utils/constants';
 
 /** Where a chapter's reading position is filed. */
 export function positionKey(path: string): string {
 	return `file:${path}`;
+}
+
+/** A page to open on: the line it holds, or the id written on it. */
+interface Target {
+	line?: number;
+	id?: string;
 }
 
 /**
@@ -37,9 +50,12 @@ export class ChapterFileView extends TextFileView implements HoverParent {
 	private key = '';
 	/** Set while we write a task, so our own edit does not re-render the page. */
 	private selfEdit = false;
+	/** A page asked for before the file's pages were read. */
+	private pending: Target | null = null;
 
 	private readonly rootEl: HTMLElement;
 	private readonly pageEl: HTMLElement;
+	private readonly reviewEl: HTMLElement;
 	private sheetEl!: HTMLElement;
 	private readonly prevEl: HTMLButtonElement;
 	private readonly nextEl: HTMLButtonElement;
@@ -56,6 +72,7 @@ export class ChapterFileView extends TextFileView implements HoverParent {
 		root.tabIndex = 0;
 		this.rootEl = root;
 		this.pageEl = root.createDiv({ cls: 'll-chapter__page' });
+		this.reviewEl = root.createDiv({ cls: 'll-chapter__review' });
 		this.newSheet();
 
 		const nav = root.createDiv({ cls: 'll-chapter__nav' });
@@ -117,6 +134,15 @@ export class ChapterFileView extends TextFileView implements HoverParent {
 				? this.plugin.state.get(this.key)
 				: this.index;
 		this.index = clamp(wanted, 0, this.pages.length - 1);
+
+		if (this.pending) {
+			const at = this.pageFor(this.pending);
+			this.pending = null;
+			if (at >= 0) {
+				this.index = at;
+				this.plugin.state.set(this.key, at);
+			}
+		}
 		void this.render();
 	}
 
@@ -126,19 +152,32 @@ export class ChapterFileView extends TextFileView implements HoverParent {
 	}
 
 	/**
-	 * Open on the page a line sits on. This is how the card list, which knows
-	 * a card by its line in the file, lands on the page holding it.
+	 * Open on a page: the one a line sits on, which is how a search result
+	 * lands on a card, or the one named by a `#^id` link.
 	 */
 	override setEphemeralState(state: unknown): void {
 		super.setEphemeralState(state);
-		const line = (state as { line?: unknown } | null)?.line;
-		if (typeof line !== 'number' || this.pages.length === 0) return;
+		const target = readTarget(state);
+		if (!target) return;
+		// Asked before the file was read: take it when the pages arrive.
+		if (this.pages.length === 0) {
+			this.pending = target;
+			return;
+		}
+		const index = this.pageFor(target);
+		if (index >= 0) this.goTo(index);
+	}
 
+	private pageFor(target: Target): number {
+		if (target.id !== undefined) {
+			return this.pages.findIndex((page) => readPageId(page.text) === target.id);
+		}
+		const line = target.line ?? -1;
 		let index = -1;
 		this.pages.forEach((page, at) => {
 			if (page.startLine <= line) index = at;
 		});
-		if (index >= 0) this.goTo(index);
+		return index;
 	}
 
 	private async reload(): Promise<void> {
@@ -225,13 +264,45 @@ export class ChapterFileView extends TextFileView implements HoverParent {
 		const component = new Component();
 		this.addChild(component);
 		this.pageComponent = component;
+
+		const page = this.pages[this.index];
+		if (page) this.renderReview(page.text, component);
 		await MarkdownRenderer.render(
 			this.app,
-			this.pages[this.index]?.text ?? '',
+			stripPageId(page?.text ?? ''),
 			this.sheetEl,
 			this.file?.path ?? '',
 			component,
 		);
+	}
+
+	/**
+	 * The page is a card, and this is its review line. A page that has never
+	 * been answered is known by its text until the first answer names it.
+	 */
+	private renderReview(text: string, component: Component): void {
+		if (!this.plugin.settings.showReviewControls) return;
+		const id = readPageId(text);
+		const hash = hashString(text);
+		const name = new CardName(id ?? hash, id !== null, () =>
+			this.namePage(hash),
+		);
+		renderReviewLine(this.plugin, this.reviewEl, component, name);
+	}
+
+	/** Write an id on the page, keeping our copy of the file in step. */
+	private async namePage(hash: string): Promise<string | null> {
+		const file = this.file;
+		if (!file) return null;
+		this.selfEdit = true;
+		try {
+			const id = await nameCard(this.plugin, hash, [file.path]);
+			this.data = await this.app.vault.cachedRead(file);
+			this.pages = splitPages(this.data, stripFrontmatter(this.data).offset);
+			return id;
+		} finally {
+			this.selfEdit = false;
+		}
 	}
 
 	/** A fresh sheet for the next page, so nothing of the last one is left. */
@@ -240,6 +311,7 @@ export class ChapterFileView extends TextFileView implements HoverParent {
 			this.removeChild(this.pageComponent);
 			this.pageComponent = null;
 		}
+		this.reviewEl.empty();
 		this.pageEl.empty();
 		this.pageEl.scrollTop = 0;
 		this.sheetEl = this.pageEl.createDiv({
@@ -313,6 +385,16 @@ export class ChapterFileView extends TextFileView implements HoverParent {
 		this.prevEl.disabled = true;
 		this.nextEl.disabled = true;
 	}
+}
+
+/** `{line: 12}` from a search result, or `{subpath: '#^id'}` from a link. */
+function readTarget(state: unknown): Target | null {
+	const record = state as { line?: unknown; subpath?: unknown } | null;
+	if (typeof record?.subpath === 'string' && record.subpath.startsWith('#^')) {
+		return { id: record.subpath.slice(2) };
+	}
+	if (typeof record?.line === 'number') return { line: record.line };
+	return null;
 }
 
 /** Match how Obsidian styles a ticked task elsewhere. */

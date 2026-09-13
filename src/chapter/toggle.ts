@@ -16,14 +16,18 @@ const TOGGLE_CLASS = 'll-chapter-toggle';
  */
 const editing = new WeakMap<WorkspaceLeaf, string>();
 
-/** Show `file` in the reader. */
+/**
+ * Show `file` in the reader. `eState` picks the page: `{line}` for the page
+ * holding a line, `{subpath: '#^id'}` for the page carrying that id.
+ */
 export async function showAsChapter(
 	leaf: WorkspaceLeaf,
 	file: TFile | null,
+	eState?: Record<string, unknown>,
 ): Promise<void> {
 	if (!file) return;
 	editing.delete(leaf);
-	await show(leaf, file, CHAPTER_VIEW_TYPE, {});
+	await show(leaf, file, CHAPTER_VIEW_TYPE, {}, eState);
 }
 
 /** Show `file` in the normal markdown editor, pages and all. */
@@ -41,33 +45,20 @@ async function show(
 	file: TFile,
 	type: string,
 	state: Record<string, unknown>,
+	eState?: Record<string, unknown>,
 ): Promise<void> {
 	try {
-		await leaf.setViewState({
-			type,
-			state: { file: file.path, ...state },
-			active: true,
-		});
+		await leaf.setViewState(
+			{
+				type,
+				state: { file: file.path, ...state },
+				active: true,
+			},
+			eState,
+		);
 	} catch (error) {
 		console.error(error);
 		new Notice('Could not switch this view.');
-	}
-}
-
-/** Flip the pane the file is open in between the reader and the editor. */
-export async function toggleChapterView(
-	plugin: LanguageLearningPlugin,
-): Promise<void> {
-	const leaf = plugin.app.workspace.getMostRecentLeaf();
-	const file = plugin.app.workspace.getActiveFile();
-	if (!leaf || !isChapterFile(file)) {
-		new Notice('Open a .chapter.md note first.');
-		return;
-	}
-	if (leaf.view.getViewType() === CHAPTER_VIEW_TYPE) {
-		await showAsMarkdown(leaf, file);
-	} else {
-		await showAsChapter(leaf, file);
 	}
 }
 

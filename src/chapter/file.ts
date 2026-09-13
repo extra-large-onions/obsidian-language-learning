@@ -22,11 +22,3 @@ export function chapterName(basename: string): string {
 		? basename.slice(0, -CHAPTER_SUFFIX.length)
 		: basename;
 }
-
-/**
- * The same test, from a path alone - for the places that are handed a
- * `sourcePath` rather than the file, like a markdown post processor.
- */
-export function isChapterPath(path: string): boolean {
-	return path.endsWith(`${CHAPTER_SUFFIX}.md`);
-}

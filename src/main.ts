@@ -11,10 +11,11 @@ import { isChapterFile } from './chapter/file';
 import { registerCommands } from './commands';
 import { SlashSuggest } from './ui/slash-suggest';
 import { registerImagePaste } from './images/paste';
+import { registerChapterLinks } from './chapter/links';
 import { CardIndex } from './review/card-index';
-import { CARDS_VIEW_TYPE, CardsView } from './review/cards-view';
+import { watchIndexNote } from './review/index-note';
 import { ReviewStore } from './review/store';
-import { openCardsView } from './commands/open-cards';
+import { registerCardCanvas } from './commands/open-canvas';
 import {
 	COLOURABLE_ROLES,
 	roleVar,
@@ -42,16 +43,14 @@ export default class LanguageLearningPlugin extends Plugin {
 		this.register(() => void this.reviews.saveNow());
 
 		this.index = new CardIndex(this);
-		this.registerView(CARDS_VIEW_TYPE, (leaf) => new CardsView(leaf, this));
+		watchIndexNote(this);
 		// Reading every note is for after the vault is up, never during load.
 		this.app.workspace.onLayoutReady(() => {
 			this.index.watch();
 			void this.index.start();
 		});
 		this.register(() => void this.index.saveNow());
-		this.addRibbonIcon('gallery-vertical-end', 'Language cards', () => {
-			void openCardsView(this);
-		});
+		registerCardCanvas(this);
 
 		// A .chapter.md note is read a page at a time; the header button opens
 		// the same file in the normal editor, and back again.
@@ -60,6 +59,7 @@ export default class LanguageLearningPlugin extends Plugin {
 			(leaf) => new ChapterFileView(leaf, this),
 		);
 		registerChapterToggle(this);
+		registerChapterLinks(this);
 		this.registerEvent(
 			this.app.vault.on('rename', (file, oldPath) => {
 				if (file instanceof TFile && isChapterFile(file)) {
@@ -71,7 +71,7 @@ export default class LanguageLearningPlugin extends Plugin {
 		this.registerMarkdownCodeBlockProcessor(
 			SENTENCE_BLOCK_LANG,
 			(source, el, ctx) => {
-				ctx.addChild(new SentenceView(this, source, el, ctx));
+				ctx.addChild(new SentenceView(this, source, el, ctx.sourcePath));
 			},
 		);
 

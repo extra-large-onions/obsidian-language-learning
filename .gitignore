@@ -18,5 +18,10 @@ main.js
 # obsidian
 data.json
 
+# Written by the plugin at runtime: the index cache and your review history
+.cache/
+reviews.json
+reviews.broken.json
+
 # Exclude macOS Finder (System Explorer) View States
 .DS_Store

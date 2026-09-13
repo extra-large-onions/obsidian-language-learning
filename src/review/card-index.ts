@@ -6,14 +6,18 @@ import {
 	normalizePath,
 } from 'obsidian';
 import type LanguageLearningPlugin from '../main';
-import { ParsedSentence, parseSentenceBlock } from '../sentence/parse';
+import { chapterName, isChapterFile } from '../chapter/file';
+import { splitPages, stripFrontmatter } from '../chapter/parser';
+import { parseSentenceBlock } from '../sentence/parse';
 import { SENTENCE_BLOCK_LANG } from '../utils/constants';
-import { readBlockId } from '../utils/block-id';
-import { findFences, lineAt } from '../utils/fences';
-import { cardId } from './card';
+import { findFences } from '../utils/fences';
+import { pageCardId, pageTitle, readPageId } from './page-card';
 
 /**
  * Every card in the vault, and every word in those cards.
+ *
+ * A card is one page of a `.chapter.md` note. Its words are the dictionary
+ * forms in the `korean` blocks on that page.
  *
  * This is derived from the notes and is never written down. It is built once
  * when the vault is ready and then kept up file by file, which is cheap
@@ -22,11 +26,8 @@ import { cardId } from './card';
 
 /** The index on disk. It is a cache: delete it and it is built again. */
 const CACHE_FILE = '.cache/index.json';
-const VERSION = 1;
+const VERSION = 2;
 const SAVE_DELAY = 2000;
-
-/** File kinds a card can be written in. */
-const INDEXED = new Set(['md', 'canvas']);
 
 /**
  * How often the queue of changed files is looked at. The setting decides
@@ -37,19 +38,21 @@ const TICK = 30000;
 /** Where a card is written. */
 export interface Place {
 	path: string;
-	/** Line the block starts on. Zero in a canvas, which has no lines. */
+	/** Line the page starts on. */
 	line: number;
-	/** Which sentence of the block it is. */
-	index: number;
+	/** Which page of the chapter it is, from zero. */
+	page: number;
 }
 
 export interface IndexedCard {
 	id: string;
-	text: string;
-	gloss: string | null;
-	/** Dictionary forms in the sentence, as keys into the word index. */
+	/** The page's heading, first sentence, or first line. */
+	title: string;
+	/** True when the id is written on the page, not the hash of its text. */
+	named: boolean;
+	/** Dictionary forms on the page, as keys into the word index. */
 	words: string[];
-	/** Everywhere it is written. One sentence in two notes is one card. */
+	/** Everywhere it is written. One page copied into two notes is one card. */
 	places: Place[];
 }
 
@@ -108,8 +111,8 @@ export class CardIndex {
 		this.words.clear();
 		this.byFile.clear();
 
-		for (const file of this.plugin.app.vault.getFiles()) {
-			await this.read(file);
+		for (const file of this.plugin.app.vault.getMarkdownFiles()) {
+			if (isChapterFile(file)) await this.read(file);
 		}
 		this.built = true;
 		this.changed();
@@ -119,7 +122,7 @@ export class CardIndex {
 	/**
 	 * Follow the vault, but at arm's length. Every save would otherwise be a
 	 * read and a redraw, so a changed file is only noted here and read later,
-	 * on the sweep - or at once when you open the card list, or ask.
+	 * on the sweep - or at once when the cards are laid out, or you ask.
 	 */
 	watch(): void {
 		const { vault } = this.plugin.app;
@@ -140,7 +143,7 @@ export class CardIndex {
 	}
 
 	private queue(file: TAbstractFile): void {
-		if (!(file instanceof TFile) || !INDEXED.has(file.extension)) return;
+		if (!(file instanceof TFile) || !isChapterFile(file)) return;
 		this.pending.set(file.path, file);
 	}
 
@@ -197,97 +200,33 @@ export class CardIndex {
 	 * file twice counts it once. */
 	private async read(file: TFile): Promise<void> {
 		this.forget(file.path);
-		let ids: string[] = [];
-		if (file.extension === 'md') ids = await this.readNote(file);
-		else if (file.extension === 'canvas') ids = await this.readCanvas(file);
-		if (ids.length > 0) this.byFile.set(file.path, ids);
-	}
-
-	private async readNote(file: TFile): Promise<string[]> {
-		if (!this.mightHaveBlocks(file)) return [];
-
 		const text = await this.plugin.app.vault.cachedRead(file);
-		const ids: string[] = [];
-		for (const fence of findFences(text)) {
-			if (fence.lang !== SENTENCE_BLOCK_LANG) continue;
-			const body = text.slice(fence.bodyStart, fence.bodyEnd);
-			this.collect(body, file.path, lineAt(text, fence.blockStart), ids);
-		}
-		return ids;
-	}
-
-	/**
-	 * A canvas keeps its cards as markdown inside a JSON node, so the blocks
-	 * are found the same way. There are no lines to jump to, only the file.
-	 */
-	private async readCanvas(file: TFile): Promise<string[]> {
-		const raw = await this.plugin.app.vault.cachedRead(file);
-		let data: unknown;
-		try {
-			data = JSON.parse(raw);
-		} catch {
-			return [];
-		}
-		const nodes = (data as { nodes?: unknown } | null)?.nodes;
-		if (!Array.isArray(nodes)) return [];
-
-		const ids: string[] = [];
-		for (const node of nodes) {
-			const text = (node as { text?: unknown } | null)?.text;
-			if (typeof text !== 'string') continue;
-			for (const fence of findFences(text)) {
-				if (fence.lang !== SENTENCE_BLOCK_LANG) continue;
-				this.collect(
-					text.slice(fence.bodyStart, fence.bodyEnd),
-					file.path,
-					0,
-					ids,
-				);
-			}
-		}
-		return ids;
-	}
-
-	private collect(
-		body: string,
-		path: string,
-		line: number,
-		ids: string[],
-	): void {
-		const blockId = readBlockId(body);
-		parseSentenceBlock(body).forEach((sentence, index) => {
-			if (!sentence.annotated || sentence.text.trim() === '') return;
-			ids.push(this.add(cardId(sentence, blockId, index), sentence, {
-				path,
-				line,
-				index,
-			}));
-		});
-	}
-
-	/**
-	 * A note with no code block in it cannot hold a card. The cache is the
-	 * cheap way to know that; when it has not been read yet, read the file.
-	 */
-	private mightHaveBlocks(file: TFile): boolean {
-		const sections = this.plugin.app.metadataCache.getFileCache(file)?.sections;
-		return !sections || sections.some((section) => section.type === 'code');
+		const ids = splitPages(text, stripFrontmatter(text).offset).map(
+			(page, index) =>
+				this.add(page.text, {
+					path: file.path,
+					line: page.startLine,
+					page: index,
+				}),
+		);
+		if (ids.length > 0) this.byFile.set(file.path, ids);
 	}
 
 	/* ----------------------------------------------------------- tables --- */
 
-	private add(id: string, sentence: ParsedSentence, place: Place): string {
+	private add(text: string, place: Place): string {
+		const id = pageCardId(text);
 		const existing = this.cards.get(id);
 		if (existing) {
 			existing.places.push(place);
 			return id;
 		}
 
-		const words = wordsOf(sentence);
+		const words = wordsOf(text);
 		this.cards.set(id, {
 			id,
-			text: sentence.text,
-			gloss: sentence.gloss,
+			title: pageTitle(text) ?? `Page ${place.page + 1}`,
+			named: readPageId(text) !== null,
 			words: words.map((word) => word.key),
 			places: [place],
 		});
@@ -342,6 +281,10 @@ export class CardIndex {
 		return this.cards.get(id) ?? null;
 	}
 
+	word(key: string): IndexedWord | null {
+		return this.words.get(key) ?? null;
+	}
+
 	/** Words, most used first, then alphabetically. */
 	allWords(): IndexedWord[] {
 		return [...this.words.values()].sort(
@@ -355,11 +298,6 @@ export class CardIndex {
 		return [...word.cards]
 			.map((id) => this.cards.get(id))
 			.filter((card): card is IndexedCard => card !== undefined);
-	}
-
-	/** Ids with a history but no card left in the vault. */
-	orphans(reviewed: Iterable<string>): string[] {
-		return [...reviewed].filter((id) => !this.cards.has(id));
 	}
 
 	/* ------------------------------------------------------------- disk --- */
@@ -442,8 +380,8 @@ export class CardIndex {
 			.map(
 				([id, card]) =>
 					`\t\t${JSON.stringify(id)}: ${JSON.stringify({
-						text: card.text,
-						gloss: card.gloss ?? undefined,
+						title: card.title,
+						named: card.named || undefined,
 						places: card.places,
 					})}`,
 			);
@@ -478,6 +416,20 @@ export class CardIndex {
 	}
 }
 
+/** Reads as `Lesson 3 p.2`. */
+export function describePlace(place: Place): string {
+	const name = place.path.split('/').pop() ?? place.path;
+	return `${chapterName(name.replace(/\.md$/, ''))} p.${place.page + 1}`;
+}
+
+/** Reading order: by chapter, then by page. */
+export function byPlace(a: IndexedCard, b: IndexedCard): number {
+	const pa = a.places[0];
+	const pb = b.places[0];
+	if (!pa || !pb) return 0;
+	return pa.path.localeCompare(pb.path) || pa.page - pb.page;
+}
+
 /* ------------------------------------------------------------- reading --- */
 
 interface CacheFile {
@@ -489,7 +441,7 @@ interface CacheFile {
 function readCard(id: string, value: unknown): IndexedCard | null {
 	if (!value || typeof value !== 'object') return null;
 	const record = value as Record<string, unknown>;
-	if (typeof record['text'] !== 'string') return null;
+	if (typeof record['title'] !== 'string') return null;
 
 	const places = Array.isArray(record['places'])
 		? record['places'].filter(isPlace)
@@ -498,8 +450,8 @@ function readCard(id: string, value: unknown): IndexedCard | null {
 
 	return {
 		id,
-		text: record['text'],
-		gloss: typeof record['gloss'] === 'string' ? record['gloss'] : null,
+		title: record['title'],
+		named: record['named'] === true,
 		words: [],
 		places,
 	};
@@ -511,7 +463,7 @@ function isPlace(value: unknown): value is Place {
 	return (
 		typeof record['path'] === 'string' &&
 		typeof record['line'] === 'number' &&
-		typeof record['index'] === 'number'
+		typeof record['page'] === 'number'
 	);
 }
 
@@ -542,15 +494,25 @@ function readWord(
 	};
 }
 
-/** The dictionary forms of a sentence, once each, marks left out. */
-function wordsOf(sentence: ParsedSentence): Word[] {
+/**
+ * The dictionary forms in a page's annotated sentences, once each, marks
+ * left out.
+ */
+function wordsOf(text: string): Word[] {
 	const seen = new Map<string, Word>();
-	for (const { token } of sentence.placed) {
-		if (token.pos === 'punct' || token.role === 'punct') continue;
-		const display = token.lemma ?? token.t;
-		const key = display.toLowerCase();
-		if (key === '' || seen.has(key)) continue;
-		seen.set(key, { key, display, pos: token.pos ?? null });
+	for (const fence of findFences(text)) {
+		if (fence.lang !== SENTENCE_BLOCK_LANG) continue;
+		const body = text.slice(fence.bodyStart, fence.bodyEnd);
+		for (const sentence of parseSentenceBlock(body)) {
+			if (!sentence.annotated) continue;
+			for (const { token } of sentence.placed) {
+				if (token.pos === 'punct' || token.role === 'punct') continue;
+				const display = token.lemma ?? token.t;
+				const key = display.toLowerCase();
+				if (key === '' || seen.has(key)) continue;
+				seen.set(key, { key, display, pos: token.pos ?? null });
+			}
+		}
 	}
 	return [...seen.values()];
 }

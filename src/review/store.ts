@@ -14,7 +14,7 @@ import { ReviewState, cleanState } from './schedule';
 const FILE = 'reviews.json';
 /** Where an unreadable file is put, so a bad parse never loses history. */
 const BACKUP = 'reviews.broken.json';
-const VERSION = 1;
+const VERSION = 2;
 const SAVE_DELAY = 800;
 
 export class ReviewStore {

@@ -84,150 +84,6 @@ Each one keeps its own gloss, and a group number belongs to its own sentence.
 
 Set the two languages under **Settings -> Language learning -> Sentence**.
 
-### Reviewing
-
-In a `.chapter.md` note, under each sentence is a review line: a bar showing
-how much of the card is likely to be left today, when you last did it, when it
-comes up again, and four buttons - Again, Hard, Good, Easy. It reads `Done 3
-days ago - In 5 days - 74%`. Hover the bar for the exact date and the interval.
-
-Only chapters get that line. A `korean` block quoted in an ordinary note is
-there to be read, and stays a plain annotated sentence. The cards are still
-made either way, so the index finds those sentences and the card list
-schedules them - you answer them from the card list rather than in the note.
-
-The schedule is SM-2. A card you answer runs 1 day, 6 days, then the last
-interval times its ease, which grows on Easy and shrinks on Hard. Again puts
-it back to a day and makes it a little harder for good. A check that is late
-and goes well counts the days the card actually survived, not the days it was
-scheduled for.
-
-The bar is the forgetting curve the schedule assumes. It passes through 90% on
-the due day and falls away after that, so sorting by it is sorting by what you
-are closest to losing.
-
-The calendar button changes the day a card was last checked, for when you read
-it away from your vault and grade it later. It moves the record without
-touching the interval or the ease.
-
-Your history is kept in
-`.obsidian/plugins/obsidian-language-learning/reviews.json`, not in your notes,
-so checking a card never rewrites the note it sits in. One card per line, so a
-vault synced with git can merge two days of reviews instead of picking one:
-
-```json
-{
-	"version": 1,
-	"cards": {
-		"1p4k9x": {"last":"2026-09-01","due":"2026-09-15","interval":14,"ease":2.5,"reps":4,"lapses":0}
-	}
-}
-```
-
-`last` is the day you last did the card, `due` the day it comes back. The key
-is the card id - the `id` in the block, or the hash of its text until one is
-written.
-
-### Block ids
-
-The first time a block is drawn, the plugin writes an id on top of it:
-
-````markdown
-```korean
-id: k3f9x2ab
-{"text":"저는 사과를 먹었어요.", ...}
-```
-````
-
-It is a plain line above the JSON, not a field inside it, so nothing the model
-wrote is ever touched.
-
-The id is what a card's history and the word index are filed under, so both
-survive you editing the sentence. A block with two sentences names them
-`k3f9x2ab` and `k3f9x2ab#1`. Until a block has an id, its cards are known by
-the hash of their text - they still review, they just forget when edited - and
-the history moves across when the id is written.
-
-Ids are written as you meet blocks. **Give every block an ID** does the whole
-vault in one go, for notes you have not opened. A canvas card has no lines of
-its own to write to, so blocks in one stay unnamed.
-
-Turn the whole line off under **Settings -> Language learning -> Review**.
-
-### The card list
-
-**Language cards** in the ribbon, or the command of the same name, opens a
-list of every card in the vault. It has two tabs.
-
-**Cards** groups them into what is due, what has never been checked, and what
-comes later, with the most overdue first. Each row carries the same bar and
-the same four buttons as the block, so you can work down the list without
-opening a note. A row you answer stays where it is: a list that reorders under
-your hand is a list you cannot get through. Click a sentence to open the note
-it is written in, at the block.
-
-**Words** is the index, as a table: the form, its word class, and how many
-cards it is in. The headings order it by word or by count. Open a row to see
-its cards, each with the note and line it is written on and the id it is filed
-under; click one to go straight to that block. This is how you find that a verb
-turns up in two cards, and read them side by side.
-
-The filter box searches sentences and glosses on the first tab, and words on
-the second.
-
-Cards inside canvas cards are counted too - a canvas keeps its text as
-markdown, so the blocks are found the same way, though there is no line to
-jump to inside one.
-
-One sentence written in two places is one card, with one history. Editing a
-sentence that was never checked leaves its old record behind; **Remove review
-history for cards that are gone** clears those out.
-
-### The index file
-
-The index is written to
-`.obsidian/plugins/obsidian-language-learning/.cache/index.json`. Two tables,
-one entry per line, in key order:
-
-```json
-{
-	"version": 1,
-	"cards": {
-		"k3f9x2ab": {"text":"저는 사과를 먹었어요.","gloss":"I ate an apple.","places":[{"path":"Lesson 1.md","line":12,"index":0}]}
-	},
-	"tokens": {
-		"는": {"pos":["particle"],"cards":["k3f9x2ab","bbbb2222"]},
-		"먹다": {"pos":["verb"],"cards":["k3f9x2ab"]}
-	}
-}
-```
-
-`tokens` is the word index: each form points at every card it appears in. The
-key is the lemma when the model gave one, so 먹었어요 is filed under 먹다 and
-every form of the verb lands together. Punctuation is left out.
-
-It is a cache. Delete it and it is built again; nothing is lost. On startup it
-is read first so the list appears at once, then the vault is scanned to be
-sure it is true - edits made while Obsidian was closed are only caught by that
-second pass. It is rewritten a couple of seconds after a change, and only when
-something actually changed.
-
-### When it updates
-
-A note you edit is not read again on the spot. Its path is noted, and the
-files that have piled up are read on a sweep - every two minutes by default,
-under **Settings -> Language learning -> Reindex every**. At 0 minutes the
-sweep never runs and the index waits to be asked.
-
-It is asked in three ways:
-
-- Opening the card list catches up whatever is waiting.
-- The arrow beside the tabs reads the whole vault again.
-- **Rebuild the card index** does the same from the command palette.
-
-A save therefore costs nothing until the sweep, and a burst of saves costs one
-pass rather than one per save.
-
 ### The nine roles
 
 | Role | Colour | Role | Colour |
@@ -267,6 +123,183 @@ The block names what it ignored, under the sentence it belongs to.
   when a particle touches its noun.
 - **Use the role list.** Free text gives you a new colour for every spelling
   of the same role.
+
+## Cards
+
+A card is one **page** of a chapter - the text between two `---` / `---`
+breaks in a `.chapter.md` note. Whatever the page holds is what you review:
+a paragraph, a list, a picture, or a few annotated sentences. The `korean`
+blocks on a page are read as usual; they are not cards of their own, but their
+words are filed under the page they sit on.
+
+### Reviewing
+
+In the chapter reader, under the page, is its review line: a bar showing how
+much of the page is likely to be left today, and one button - **Read it**. It
+reads `Read 3 days ago - In 5 days - 74% - 4 times`.
+
+There is nothing to grade. Each press writes down today, and the page moves
+one rung up a fixed ladder: 1 day, 6 days, 15, 37, 92, and half again as far
+each time after that, up to ten years.
+
+Click the text to open every day you have read the page, newest first. The
+**x** beside a day takes it back out, for one written down by mistake.
+
+The bar is the forgetting curve the schedule assumes. It passes through 90% on
+the due day and falls away after that, so sorting by it is sorting by what you
+are closest to losing.
+
+Your history is kept in
+`.obsidian/plugins/obsidian-language-learning/reviews.json`, not in your notes.
+One card per line, so a vault synced with git can merge two days of reviews
+instead of picking one:
+
+```json
+{
+	"version": 2,
+	"cards": {
+		"k3f9x2ab": {"days":["2026-08-02","2026-08-08","2026-08-23","2026-09-29"]}
+	}
+}
+```
+
+The days are the whole record. When the card is due, how far apart it is read,
+and how likely it is to have stuck are all worked out from them. The key is
+the card id.
+
+Turn the line off under **Settings -> Language learning -> Review**.
+
+### The card canvas
+
+**Lay the cards out on a canvas** writes a canvas of every card and opens it:
+one node per page, the page's own text under its record, four to a row,
+**the most overdue first**. Pages not due yet follow, and pages you have never
+read come last - a page with no history has no date to be behind on.
+
+The border says where the page stands: red for late, orange for due today,
+green for waiting. Above each page, its record sits in a callout, so it reads
+as a label on the page rather than as more of the page:
+
+````markdown
+**7.** [[Lesson 3.chapter#^k3f9x2ab|Salut]]
+
+> [!danger] 3 days late · 4x
+> read 9 days ago (2026-09-03) · due 2026-09-09 · every 6 days
+>
+> [[Lesson 3.chapter|Lesson 3]] · p.2 of 12 · `k3f9x2ab`
+>
+> 3 words: 안녕, 하다, 친구
+
+---
+
+*the page itself*
+````
+
+The title is what you want first: how far behind the card is, and how many
+times you have read it - or **Never read**. The callout is tinted to match:
+red when it is late, blue when it is due today, grey-blue when it is waiting,
+plain when it has never been read.
+
+The first link opens the page in the reader, the second opens the whole
+chapter. A page written into two chapters names the other place under its
+words.
+
+It is `Card review.canvas` at the root of your vault, and closing the tab
+**throws it away**, to wherever your vault sends deleted files. It is built
+from scratch every time you ask for it,
+so there is nothing to keep: the text on it is a copy of the pages as they
+were when you asked. Copy anything you want to keep into a canvas of your own
+before you close it.
+
+Two hundred cards at most, so the canvas stays something Obsidian can draw.
+
+### Page ids
+
+The first time you answer a page, the plugin writes an id as its last line:
+
+```markdown
+# Salut
+
+**salut** - hi (informal, friends only)
+
+^k3f9x2ab
+
+---
+---
+```
+
+It is an ordinary Obsidian block id. Reading view and the chapter reader hide
+it, and `[[Lesson 1.chapter#^k3f9x2ab]]` links to the page - opened from a
+rendered link, the chapter comes up in the reader on that page.
+
+The id is what a card's history is filed under, so it survives you editing the
+page. Until a page has one it is known by the hash of its text - it still
+reviews, and it still shows in the lists, but editing it before its first
+answer starts it over. The history moves across when the id is written.
+
+**Rebuild the card index** names every page in the vault in one go, for pages
+you want to link to before you have read them.
+
+### The card index note
+
+`Card index.md`, at the root of the vault, is where you see every card at
+once: a table of the cards, each with a link to its page, the words on it,
+every day you have read it, and its id; then a table of the words, with links
+to the pages they are on. It survives sync, opens on a phone, and can be
+linked to like anything else.
+
+The plugin keeps it up to date. It is rewritten a couple of seconds after the
+index changes, and only when its text would change, so a sweep that found
+nothing new never touches it. It is rewritten whole, so do not edit it. Turn
+it off under **Settings -> Language learning -> Card index note**; **Rebuild
+the card index** brings it up to date on demand.
+
+One page copied into two chapters is one card, with one record.
+
+### The index file
+
+The index is written to
+`.obsidian/plugins/obsidian-language-learning/.cache/index.json`. Two tables,
+one entry per line, in key order:
+
+```json
+{
+	"version": 2,
+	"cards": {
+		"k3f9x2ab": {"title":"Salut","named":true,"places":[{"path":"Lesson 1.chapter.md","line":8,"page":1}]}
+	},
+	"tokens": {
+		"는": {"pos":["particle"],"cards":["k3f9x2ab","bbbb2222"]},
+		"먹다": {"pos":["verb"],"cards":["k3f9x2ab"]}
+	}
+}
+```
+
+`tokens` is the word index: each form points at every page it appears on. The
+key is the lemma when the model gave one, so 먹었어요 is filed under 먹다 and
+every form of the verb lands together. Punctuation is left out.
+
+It is a cache. Delete it and it is built again; nothing is lost. On startup it
+is read first so the list appears at once, then every chapter is read to be
+sure it is true - edits made while Obsidian was closed are only caught by that
+second pass. It is rewritten a couple of seconds after a change, and only when
+something actually changed.
+
+### When it updates
+
+A chapter you edit is not read again on the spot. Its path is noted, and the
+files that have piled up are read on a sweep - every two minutes by default,
+under **Settings -> Language learning -> Reindex every**. At 0 minutes the
+sweep never runs and the index waits to be asked.
+
+It is asked in two ways:
+
+- Laying the cards out on a canvas catches up whatever is waiting.
+- **Rebuild the card index** reads the whole vault again, names every page,
+  and writes `Card index.md`.
+
+A save therefore costs nothing until the sweep, and a burst of saves costs one
+pass rather than one per save.
 
 ## Compressing images
 
@@ -401,6 +434,9 @@ Turn it off under **Settings → Language learning → Remember reading position
 - **Slash commands** — offer the `/` menu while typing
 - **Recording filename prefix** — defaults to `Recording`
 - **Export folder** — defaults to `Exports`
+- **Review** — the review line under each page in the reader
+- **Reindex every** — minutes a changed chapter waits before it is read again
+- **Card index note** — keep `Card index.md` up to date
 
 ## Development
 

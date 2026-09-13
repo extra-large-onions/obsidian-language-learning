@@ -5,6 +5,7 @@ import {
 	DEFAULT_ROLE_COLOURS,
 	roleLabel,
 } from './sentence/palette';
+import { INDEX_NOTE_PATH, syncIndexNote } from './review/index-note';
 import type LanguageLearningPlugin from './main';
 
 export interface LanguageLearningSettings {
@@ -30,10 +31,12 @@ export interface LanguageLearningSettings {
 	sentenceLanguage: string;
 	/** Language the notes are written in. */
 	learnerLanguage: string;
-	/** Show the review line under each sentence. */
+	/** Show the review line under each page in the chapter reader. */
 	showReviewControls: boolean;
 	/** Minutes between sweeps of the changed files. Zero waits to be asked. */
 	indexSweepMinutes: number;
+	/** Rewrite `Card index.md` whenever the index changes. */
+	keepIndexNote: boolean;
 	/** Role colours the user changed. Untouched roles are not listed. */
 	roleColours: Record<string, string>;
 }
@@ -52,6 +55,7 @@ export const DEFAULT_SETTINGS: LanguageLearningSettings = {
 	learnerLanguage: 'English',
 	showReviewControls: true,
 	indexSweepMinutes: 2,
+	keepIndexNote: true,
 	roleColours: {},
 };
 
@@ -239,11 +243,11 @@ export class LanguageLearningSettingTab extends PluginSettingTab {
 		new Setting(containerEl)
 			.setName('Review')
 			.setDesc(
-				'In a .chapter.md note, show how much of each sentence is likely ' +
-					'to be left today and the buttons that check it. Elsewhere a ' +
-					'korean block is just read. Your history is kept in ' +
-					'reviews.json beside this plugin, so checking a card never ' +
-					'rewrites your note.',
+				'Under each page in the chapter reader, show how much of the page ' +
+					'is likely to be left today and the button that writes down ' +
+					'that you have read it. Every day you read a page is kept in ' +
+					'reviews.json beside this plugin; the first one writes a ^id ' +
+					'line at the end of the page, so the record survives edits.',
 			)
 			.addToggle((toggle) =>
 				toggle
@@ -258,9 +262,9 @@ export class LanguageLearningSettingTab extends PluginSettingTab {
 			.setName('Reindex every')
 			.setDesc(
 				'How long a changed note waits before the index reads it again. ' +
-					'The card list also catches up the moment you open it, and ' +
-					'"Rebuild the card index" reads the whole vault. At 0 minutes ' +
-					'the index only updates when you ask.',
+					'Laying the cards out on a canvas catches up whatever is ' +
+					'waiting, and "Rebuild the card index" reads the whole vault. ' +
+					'At 0 minutes the index only updates when you ask.',
 			)
 			.addSlider((slider) =>
 				slider
@@ -270,6 +274,25 @@ export class LanguageLearningSettingTab extends PluginSettingTab {
 					.onChange(async (value) => {
 						this.plugin.settings.indexSweepMinutes = value;
 						await this.plugin.savePluginData();
+					}),
+			);
+
+		new Setting(containerEl)
+			.setName('Card index note')
+			.setDesc(
+				`Keep ${INDEX_NOTE_PATH} at the root of your vault in step with ` +
+					'the index: every card and every word, with links to the pages. ' +
+					'It is rewritten whole, so edits made in it are lost.',
+			)
+			.addToggle((toggle) =>
+				toggle
+					.setValue(this.plugin.settings.keepIndexNote)
+					.onChange(async (value) => {
+						this.plugin.settings.keepIndexNote = value;
+						await this.plugin.savePluginData();
+						if (value && this.plugin.index.ready) {
+							await syncIndexNote(this.plugin);
+						}
 					}),
 			);
 

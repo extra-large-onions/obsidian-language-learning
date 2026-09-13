@@ -61,6 +61,15 @@
 	padding: var(--size-4-2) 0;
 }
 
+/* The page is a card; its review line sits between the page and the arrows. */
+.ll-chapter__review:empty {
+	display: none;
+}
+
+.ll-chapter__review > .ll-review {
+	padding-top: 0;
+}
+
 .ll-chapter__nav {
 	display: flex;
 	align-items: center;
@@ -322,57 +331,6 @@ body.theme-dark {
 	font-variant-numeric: tabular-nums;
 }
 
-.ll-review__grades {
-	display: flex;
-	gap: var(--size-4-1);
-	margin-left: auto;
-}
-
-.ll-review__grade,
-.ll-review__when {
-	height: var(--size-4-6);
-	font-size: var(--font-ui-smaller);
-	color: var(--text-muted);
-	background-color: transparent;
-	box-shadow: none;
-	border: 1px solid var(--background-modifier-border);
-}
-
-.ll-review__grade {
-	padding: 0 var(--size-4-2);
-}
-
-.ll-review__when {
-	display: flex;
-	align-items: center;
-	padding: 0 var(--size-4-1);
-	color: var(--text-faint);
-}
-
-.ll-review__grade:hover,
-.ll-review__when:hover {
-	color: var(--text-normal);
-	background-color: var(--background-modifier-hover);
-}
-
-.ll-review__grade.mod-again:hover {
-	color: var(--color-red);
-}
-
-.ll-review__grade.mod-easy:hover {
-	color: var(--color-green);
-}
-
-.ll-review__when .svg-icon {
-	width: 14px;
-	height: 14px;
-}
-
-.ll-review__date {
-	font-size: var(--font-ui-smaller);
-	padding: var(--size-4-1);
-}
-
 /* The note that opens on hover, or on a tap. */
 
 .ll-note {
@@ -404,290 +362,86 @@ body.theme-dark {
 .ll-note__body > :first-child { margin-top: 0; }
 .ll-note__body > :last-child { margin-bottom: 0; }
 
-/* The card list: every card in the vault, and the words they are made of. */
+/* Every day a page was read, under its review line. */
 
-.ll-cards {
-	display: flex;
-	flex-direction: column;
-	gap: var(--size-4-2);
-	height: 100%;
+.ll-review__status {
+	padding: 0;
+	height: auto;
+	background-color: transparent;
+	box-shadow: none;
+	cursor: pointer;
 }
 
-.ll-cards__tabs {
+.ll-review__status:hover {
+	color: var(--text-normal);
+	background-color: transparent;
+}
+
+.ll-review__mark {
 	display: flex;
+	align-items: center;
 	gap: var(--size-4-1);
-}
-
-.ll-cards__tab {
-	flex: 1;
-	height: var(--size-4-7);
-	font-size: var(--font-ui-small);
+	margin-left: auto;
+	height: var(--size-4-6);
+	padding: 0 var(--size-4-2);
+	font-size: var(--font-ui-smaller);
 	color: var(--text-muted);
 	background-color: transparent;
 	box-shadow: none;
 	border: 1px solid var(--background-modifier-border);
 }
 
-.ll-cards__tab:hover {
-	color: var(--text-normal);
+.ll-review__mark:hover {
+	color: var(--color-green);
 	background-color: var(--background-modifier-hover);
 }
 
-.ll-cards__tab.is-active {
-	color: var(--text-normal);
-	background-color: var(--background-modifier-active-hover);
-	border-color: var(--background-modifier-border-focus);
-}
-
-.ll-cards__reindex {
-	flex: none;
-	display: flex;
-	align-items: center;
-	height: var(--size-4-7);
-	padding: 0 var(--size-4-2);
-	color: var(--text-faint);
-	background-color: transparent;
-	box-shadow: none;
-	border: 1px solid var(--background-modifier-border);
-}
-
-.ll-cards__reindex:hover {
-	color: var(--text-normal);
-	background-color: var(--background-modifier-hover);
-}
-
-.ll-cards__reindex .svg-icon {
+.ll-review__mark .svg-icon {
 	width: 14px;
 	height: 14px;
 }
 
-.ll-cards__reindex.is-busy {
-	color: var(--text-accent);
-	pointer-events: none;
-}
-
-.ll-cards__reindex.is-busy .svg-icon {
-	animation: ll-spin 900ms linear infinite;
-}
-
-@keyframes ll-spin {
-	to {
-		transform: rotate(360deg);
-	}
-}
-
-.ll-cards__filter {
-	width: 100%;
-	font-size: var(--font-ui-small);
-}
-
-.ll-cards__summary {
+.ll-review__days {
+	display: flex;
+	flex-wrap: wrap;
+	gap: var(--size-4-1);
+	padding-top: var(--size-4-1);
 	font-size: var(--font-ui-smaller);
 	color: var(--text-muted);
 	font-variant-numeric: tabular-nums;
 }
 
-.ll-cards__body {
-	flex: 1;
-	overflow-y: auto;
-	margin: 0 calc(-1 * var(--size-4-2));
-}
-
-.ll-cards__section {
+.ll-review__day {
 	display: flex;
-	justify-content: space-between;
-	position: sticky;
-	top: 0;
-	z-index: 1;
-	padding: var(--size-4-2);
-	font-size: var(--font-ui-smaller);
-	text-transform: uppercase;
-	letter-spacing: 0.05em;
+	align-items: center;
+	gap: 2px;
+	padding: 0 var(--size-4-1);
+	border: 1px solid var(--background-modifier-border);
+	border-radius: var(--radius-s);
+}
+
+.ll-review__drop {
+	display: flex;
+	padding: 0;
+	height: auto;
 	color: var(--text-faint);
-	background-color: var(--background-secondary);
+	background-color: transparent;
+	box-shadow: none;
+	cursor: pointer;
 }
 
-.ll-cards__count {
-	font-variant-numeric: tabular-nums;
+.ll-review__drop:hover {
+	color: var(--color-red);
+	background-color: transparent;
 }
 
-.ll-cards__more,
-.ll-cards__empty {
-	padding: var(--size-4-2);
+.ll-review__drop .svg-icon {
+	width: 12px;
+	height: 12px;
+}
+
+.ll-review__day-none {
 	font-size: var(--font-ui-smaller);
 	color: var(--text-faint);
 	font-style: italic;
-}
-
-/* One card in the list. */
-
-.ll-card {
-	display: flex;
-	flex-direction: column;
-	gap: var(--size-4-1);
-	padding: var(--size-4-2);
-	border-bottom: 1px solid var(--background-modifier-border);
-}
-
-.ll-card.is-checked {
-	opacity: 0.55;
-}
-
-.ll-card > .ll-review__curve {
-	flex: none;
-	width: 100%;
-	height: 3px;
-}
-
-.ll-card[data-state='ok'] {
-	--ll-review-tint: var(--color-green);
-}
-
-.ll-card[data-state='due'] {
-	--ll-review-tint: var(--color-orange);
-}
-
-.ll-card__main {
-	display: flex;
-	flex-direction: column;
-	gap: 2px;
-}
-
-.ll-card__text {
-	padding: 0;
-	height: auto;
-	text-align: left;
-	white-space: normal;
-	color: var(--text-normal);
-	background-color: transparent;
-	box-shadow: none;
-	cursor: pointer;
-}
-
-.ll-card__text:hover {
-	color: var(--text-accent);
-	background-color: transparent;
-}
-
-.ll-card__gloss {
-	font-size: var(--font-ui-smaller);
-	color: var(--text-muted);
-}
-
-.ll-card__meta {
-	font-size: var(--font-ui-smaller);
-	color: var(--text-faint);
-	font-variant-numeric: tabular-nums;
-}
-
-/* The word index: a table, and the cards each word opens onto. */
-
-.ll-index {
-	width: 100%;
-	border-collapse: collapse;
-	font-size: var(--font-ui-small);
-}
-
-.ll-index thead th {
-	position: sticky;
-	top: 0;
-	z-index: 1;
-	padding: var(--size-4-1) var(--size-4-2);
-	text-align: left;
-	font-weight: var(--font-normal);
-	color: var(--text-faint);
-	background-color: var(--background-secondary);
-	border-bottom: 1px solid var(--background-modifier-border);
-}
-
-.ll-index__sort {
-	padding: 0;
-	height: auto;
-	font-size: var(--font-ui-smaller);
-	color: var(--text-faint);
-	background-color: transparent;
-	box-shadow: none;
-	cursor: pointer;
-}
-
-.ll-index__sort:hover {
-	color: var(--text-normal);
-	background-color: transparent;
-}
-
-.ll-index__sort.is-active {
-	color: var(--text-normal);
-}
-
-.ll-index__row {
-	cursor: pointer;
-}
-
-.ll-index__row td {
-	padding: var(--size-4-1) var(--size-4-2);
-	border-bottom: 1px solid var(--background-modifier-border);
-}
-
-.ll-index__row:hover td {
-	background-color: var(--background-modifier-hover);
-}
-
-.ll-index__row.is-open td {
-	background-color: var(--background-modifier-active-hover);
-	border-bottom-color: transparent;
-}
-
-.ll-index__row:focus-visible {
-	outline: none;
-	box-shadow: inset 0 0 0 2px var(--background-modifier-border-focus);
-}
-
-.ll-index__pos,
-.ll-index__num {
-	font-size: var(--font-ui-smaller);
-	color: var(--text-faint);
-}
-
-.ll-index__num {
-	text-align: right;
-	font-variant-numeric: tabular-nums;
-}
-
-.ll-index__cards td {
-	padding: 0 var(--size-4-2) var(--size-4-2) var(--size-4-3);
-	border-bottom: 1px solid var(--background-modifier-border);
-}
-
-.ll-index__card {
-	display: flex;
-	flex-direction: column;
-	align-items: flex-start;
-	gap: 1px;
-	width: 100%;
-	height: auto;
-	padding: var(--size-4-1);
-	text-align: left;
-	white-space: normal;
-	background-color: transparent;
-	box-shadow: none;
-	cursor: pointer;
-}
-
-.ll-index__card:hover {
-	background-color: var(--background-modifier-hover);
-}
-
-.ll-index__sentence {
-	color: var(--text-normal);
-}
-
-.ll-index__where {
-	font-size: var(--font-ui-smaller);
-	color: var(--text-accent);
-}
-
-.ll-index__id {
-	font-family: var(--font-monospace);
-	font-size: var(--font-ui-smaller);
-	color: var(--text-faint);
 }
