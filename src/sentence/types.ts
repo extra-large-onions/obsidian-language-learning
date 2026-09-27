@@ -14,6 +14,10 @@ export interface AnnotatedSentence {
 	tokens: AnnotatedToken[];
 	/** A natural translation of the whole sentence. */
 	gloss?: string;
+	/** The same sentence one step more casual, or more polite, with a label. */
+	alt?: string;
+	/** Markdown about the whole sentence: pattern, tone, nuance. */
+	note?: string;
 }
 
 export interface AnnotatedToken {
@@ -27,8 +31,16 @@ export interface AnnotatedToken {
 	lemma?: string;
 	/** Short explanation of this word in this sentence. */
 	note?: string;
+	/** How the word sounds, when a learner could say it wrong. */
+	pron?: string;
 	/** Tokens with the same number are one unit, even when they are apart. */
 	group?: number;
+	/**
+	 * The words of the gloss this token turns into, copied exactly. A list
+	 * when they are apart in the gloss, as in `did ... read`. The token and
+	 * those words then share a colour, and light up together.
+	 */
+	tr?: string | string[];
 }
 
 /**

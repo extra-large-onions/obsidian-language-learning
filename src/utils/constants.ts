@@ -16,3 +16,12 @@ export const SENTENCE_BLOCK_LANG = 'korean';
 
 /** Identifies this plugin to the Page preview core plugin. */
 export const HOVER_SOURCE = 'language-learning-chapter';
+
+/** Code block language that points at a moment in a movie. */
+export const MOVIE_BLOCK_LANG = 'movie';
+
+/** Video files the movie player offers to open. */
+export const MOVIE_EXTENSIONS = ['mp4', 'mkv', 'webm', 'mov', 'm4v', 'avi', 'ogv'];
+
+/** The tab the movie player can move into, instead of floating. */
+export const MOVIE_PLAYER_VIEW_TYPE = 'll-movie-player';

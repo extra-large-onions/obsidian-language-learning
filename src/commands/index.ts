@@ -2,6 +2,7 @@ import type LanguageLearningPlugin from '../main';
 import { exportCurrent } from './export-current';
 import { openCardCanvas } from './open-canvas';
 import { rebuildIndex } from './rebuild-index';
+import { registerMovieCommands } from './movie';
 
 export function registerCommands(plugin: LanguageLearningPlugin): void {
 	plugin.addCommand({
@@ -21,4 +22,6 @@ export function registerCommands(plugin: LanguageLearningPlugin): void {
 		name: 'Export current file with attachments',
 		callback: () => void exportCurrent(plugin),
 	});
+
+	registerMovieCommands(plugin);
 }

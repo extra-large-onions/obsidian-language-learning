@@ -13,6 +13,9 @@ const MAX_WARNINGS = 3;
 /** Space between the token and its note, in pixels. */
 const GAP = 8;
 
+/** Only one note is open at a time, so one id is enough to point at it. */
+const NOTE_ID = 'll-note-active';
+
 /**
  * The annotated sentences in one block. Each token takes a colour from its
  * role, and a hover shows what the token does and what it means.
@@ -49,10 +52,26 @@ export class SentenceView extends MarkdownRenderChild {
 		const list = this.containerEl.createDiv({ cls: 'll-sentences' });
 		for (const parsed of parseSentenceBlock(this.source)) {
 			const root = list.createDiv({ cls: 'll-sentence' });
+			const offset = this.placed.length;
 			this.paint(root.createDiv({ cls: 'll-sentence__text' }), parsed);
 
 			if (parsed.gloss) {
-				root.createDiv({ cls: 'll-sentence__gloss', text: parsed.gloss });
+				this.paintGloss(root.createDiv({ cls: 'll-sentence__gloss' }), parsed, offset);
+			}
+			if (parsed.alt) {
+				root.createDiv({ cls: 'll-sentence__alt', text: parsed.alt });
+			}
+			if (parsed.note) {
+				// Folded, so a long note does not bury the sentence on a card.
+				const details = root.createEl('details', { cls: 'll-sentence__note' });
+				details.createEl('summary', { text: 'Notes' });
+				void MarkdownRenderer.render(
+					this.plugin.app,
+					parsed.note,
+					details.createDiv({ cls: 'll-sentence__note-body' }),
+					this.sourcePath,
+					this,
+				);
 			}
 			for (const warning of parsed.warnings.slice(0, MAX_WARNINGS)) {
 				root.createDiv({ cls: 'll-sentence__warning', text: warning });
@@ -86,11 +105,31 @@ export class SentenceView extends MarkdownRenderChild {
 			if (explains(item)) {
 				span.addClass('is-explained');
 				span.tabIndex = 0;
-				span.setAttr('aria-label', label(item));
 			}
 			cursor = item.end;
 		}
 		if (cursor < text.length) textEl.appendText(text.slice(cursor));
+	}
+
+	/**
+	 * Draw the gloss, with a span for the words a token turns into. The span
+	 * takes that token's colour, and names its tokens by their index.
+	 */
+	private paintGloss(glossEl: HTMLElement, parsed: ParsedSentence, offset: number): void {
+		const gloss = parsed.gloss ?? '';
+		let cursor = 0;
+		for (const link of parsed.links) {
+			if (link.start > cursor) glossEl.appendText(gloss.slice(cursor, link.start));
+			const first = parsed.placed[link.tokens[0] ?? -1];
+			const role = first?.token.role ?? '';
+			const span = glossEl.createSpan({
+				cls: `ll-tok ll-gloss-tok is-explained ll-role-${isKnownRole(role) ? role : 'other'}`,
+				text: gloss.slice(link.start, link.end),
+			});
+			span.dataset['tokens'] = link.tokens.map((index) => index + offset).join(' ');
+			cursor = link.end;
+		}
+		if (cursor < gloss.length) glossEl.appendText(gloss.slice(cursor));
 	}
 
 	private wire(): void {
@@ -136,21 +175,31 @@ export class SentenceView extends MarkdownRenderChild {
 		}
 		if (el === this.activeEl && this.popoverEl) return;
 
-		const item = this.placed[Number(el.dataset['index'] ?? '-1')];
+		const item = this.placed[indexesOf(el)[0] ?? -1];
 		if (!item) return;
 
 		this.hide();
 		this.activeEl = el;
-		this.highlightGroup(el, true);
+		this.highlight(el, true);
 
+		// The note is the token's description, rather than an aria-label on the
+		// token itself: an aria-label would open Obsidian's own tooltip too, and
+		// the reader would see two notes at once.
 		const popover = this.containerEl.ownerDocument.body.createDiv({
 			cls: 'll-note',
+			attr: { id: NOTE_ID, role: 'tooltip' },
 		});
 		this.popoverEl = popover;
+		el.setAttr('aria-describedby', NOTE_ID);
 
-		popover.createDiv({ cls: 'll-note__word', text: item.token.t });
+		const head = popover.createDiv({ cls: 'll-note__word', text: item.token.t });
+		if (item.token.pron) {
+			head.createSpan({ cls: 'll-note__pron', text: item.token.pron });
+		}
 		const meta = metaLine(item);
 		if (meta) popover.createDiv({ cls: 'll-note__meta', text: meta });
+		const tr = translationOf(item);
+		if (tr) popover.createDiv({ cls: 'll-note__tr', text: tr });
 
 		if (item.token.note) {
 			const body = popover.createDiv({ cls: 'll-note__body' });
@@ -165,11 +214,16 @@ export class SentenceView extends MarkdownRenderChild {
 				component,
 			);
 		}
-		place(popover, el);
+		// The gloss sits under the sentence, so its note opens further down and
+		// leaves the sentence in view.
+		place(popover, el, el.hasClass('ll-gloss-tok'));
 	}
 
 	private hide(): void {
-		if (this.activeEl) this.highlightGroup(this.activeEl, false);
+		if (this.activeEl) {
+			this.highlight(this.activeEl, false);
+			this.activeEl.removeAttribute('aria-describedby');
+		}
 		this.activeEl = null;
 		this.popoverComponent?.unload();
 		this.popoverComponent = null;
@@ -178,19 +232,38 @@ export class SentenceView extends MarkdownRenderChild {
 	}
 
 	/**
-	 * A split unit lights up as one, so a split negation reads as one thing.
-	 * A group belongs to its own sentence, so the peers are looked for there.
+	 * Light up everything that is one unit with this element: the tokens of
+	 * its group, and the words of the gloss they turn into. Hovering either
+	 * side lights up the other. A group belongs to its own sentence, so the
+	 * peers are looked for there.
 	 */
-	private highlightGroup(el: HTMLElement, on: boolean): void {
-		const group = el.dataset['group'];
-		const sentence = el.closest<HTMLElement>('.ll-sentence__text');
-		if (group === undefined || !sentence) {
+	private highlight(el: HTMLElement, on: boolean): void {
+		const sentence = el.closest<HTMLElement>('.ll-sentence');
+		if (!sentence) {
 			el.toggleClass('is-active', on);
 			return;
 		}
-		sentence
-			.querySelectorAll<HTMLElement>(`.ll-tok[data-group="${group}"]`)
-			.forEach((peer) => peer.toggleClass('is-active', on));
+		const indexes = new Set(indexesOf(el));
+		const groups = new Set<number>();
+		for (const index of indexes) {
+			const group = this.placed[index]?.token.group;
+			if (group !== undefined) groups.add(group);
+		}
+
+		const tokens = sentence.querySelectorAll<HTMLElement>('.ll-tok[data-index]');
+		for (const peer of Array.from(tokens)) {
+			const index = Number(peer.dataset['index']);
+			const group = this.placed[index]?.token.group;
+			if (group !== undefined && groups.has(group)) indexes.add(index);
+		}
+
+		el.toggleClass('is-active', on);
+		const all = sentence.querySelectorAll<HTMLElement>('.ll-tok');
+		for (const peer of Array.from(all)) {
+			if (indexesOf(peer).some((index) => indexes.has(index))) {
+				peer.toggleClass('is-active', on);
+			}
+		}
 	}
 }
 
@@ -201,10 +274,26 @@ function tokenAt(target: EventTarget | null): HTMLElement | null {
 	return target.closest<HTMLElement>('.ll-tok');
 }
 
+/** The tokens an element stands for: its own, or those its gloss words translate. */
+function indexesOf(el: HTMLElement): number[] {
+	const raw = el.dataset['index'] ?? el.dataset['tokens'] ?? '';
+	return raw
+		.split(' ')
+		.filter((part) => part !== '')
+		.map(Number);
+}
+
 /** True when the token has something worth opening a note for. */
 function explains(item: PlacedToken): boolean {
-	const { pos, role, lemma, note } = item.token;
-	return Boolean(note || lemma || (pos && role));
+	const { pos, role, lemma, note, tr, pron } = item.token;
+	return Boolean(note || lemma || tr || pron || (pos && role));
+}
+
+/** Reads as `-> did ... read`. */
+function translationOf(item: PlacedToken): string {
+	const { tr } = item.token;
+	if (tr === undefined) return '';
+	return `→ ${typeof tr === 'string' ? tr : tr.join(' ... ')}`;
 }
 
 /** Reads as `pronoun - subject - from <lemma>`. */
@@ -217,14 +306,11 @@ function metaLine(item: PlacedToken): string {
 	return parts.join(' - ');
 }
 
-function label(item: PlacedToken): string {
-	const meta = metaLine(item);
-	const note = item.token.note ?? '';
-	return [item.token.t, meta, note].filter((part) => part !== '').join('. ');
-}
-
-/** Put the note above the token, or below it when there is no room. */
-function place(popover: HTMLElement, token: HTMLElement): void {
+/**
+ * Put the note above the token, or below it when there is no room. With
+ * `preferBelow`, the other way round.
+ */
+function place(popover: HTMLElement, token: HTMLElement, preferBelow = false): void {
 	const anchor = token.getBoundingClientRect();
 	const box = popover.getBoundingClientRect();
 	const view = token.ownerDocument.defaultView;
@@ -232,7 +318,16 @@ function place(popover: HTMLElement, token: HTMLElement): void {
 	const height = view?.innerHeight ?? box.height;
 
 	const above = anchor.top - box.height - GAP;
-	const below = Math.min(anchor.bottom + GAP, height - box.height - GAP);
+	const below = anchor.bottom + GAP;
+	const fitsAbove = above >= 0;
+	const fitsBelow = below + box.height + GAP <= height;
+	const top = preferBelow
+		? fitsBelow || !fitsAbove
+			? Math.min(below, height - box.height - GAP)
+			: above
+		: fitsAbove
+			? above
+			: Math.min(below, height - box.height - GAP);
 	const left = Math.max(
 		GAP,
 		Math.min(
@@ -240,6 +335,6 @@ function place(popover: HTMLElement, token: HTMLElement): void {
 			width - box.width - GAP,
 		),
 	);
-	popover.style.top = `${Math.max(GAP, above >= 0 ? above : below)}px`;
+	popover.style.top = `${Math.max(GAP, top)}px`;
 	popover.style.left = `${left}px`;
 }

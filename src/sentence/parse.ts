@@ -7,6 +7,14 @@ export interface PlacedToken {
 	end: number;
 }
 
+/** Words of the gloss, and the tokens they translate. */
+export interface GlossLink {
+	start: number;
+	end: number;
+	/** Indexes into `placed`. More than one when tokens share the words. */
+	tokens: number[];
+}
+
 export interface ParsedSentence {
 	/** An id inside the JSON. Older blocks carry one; new ones do not. */
 	id: string | null;
@@ -17,6 +25,11 @@ export interface ParsedSentence {
 	/** Tokens that were found in the sentence, in order. */
 	placed: PlacedToken[];
 	gloss: string | null;
+	/** Spans of the gloss that belong to a token, in gloss order. */
+	links: GlossLink[];
+	alt: string | null;
+	/** Markdown about the whole sentence. */
+	note: string | null;
 	/** What the parser ignored. Shown quietly under the sentence. */
 	warnings: string[];
 }
@@ -47,6 +60,9 @@ export function parseSentenceBlock(source: string): ParsedSentence[] {
 				text,
 				placed: [],
 				gloss: null,
+				links: [],
+				alt: null,
+				note: null,
 				warnings: ['This block is not JSON.'],
 			},
 		];
@@ -63,14 +79,24 @@ function readSentence(raw: Partial<AnnotatedSentence>): ParsedSentence {
 			: tokens.map((token) => token.t).join(' ');
 
 	const aligned = align(text, tokens);
+	const gloss = nonEmpty(raw.gloss);
+	const linked = gloss ? link(gloss, aligned.placed) : { links: [], warnings: [] };
 	return {
 		id: typeof raw.id === 'string' && raw.id.trim() !== '' ? raw.id.trim() : null,
 		annotated: true,
 		text,
 		placed: aligned.placed,
-		gloss: typeof raw.gloss === 'string' && raw.gloss.trim() !== '' ? raw.gloss : null,
-		warnings: aligned.warnings,
+		gloss,
+		links: linked.links,
+		alt: nonEmpty(raw.alt),
+		note: nonEmpty(raw.note),
+		warnings: [...aligned.warnings, ...linked.warnings],
 	};
+}
+
+/** A string worth showing, or null. */
+function nonEmpty(value: unknown): string | null {
+	return typeof value === 'string' && value.trim() !== '' ? value.trim() : null;
 }
 
 /* ---------------------------------------------------------------- json --- */
@@ -110,7 +136,10 @@ function widestSpan(text: string): string {
 function readValue(span: string): Partial<AnnotatedSentence>[] | null {
 	if (span === '') return null;
 
-	const value = tryParse(span) ?? tryParse(dropTrailingCommas(span));
+	const value =
+		tryParse(span) ??
+		tryParse(dropTrailingCommas(span)) ??
+		tryParse(dropTrailingCommas(escapeLineBreaks(span)));
 	if (!value || typeof value !== 'object') return null;
 
 	const entries = Array.isArray(value) ? value : [value];
@@ -171,6 +200,31 @@ function stripFence(source: string): string {
 	return fenced?.[1] ?? source;
 }
 
+/**
+ * A line break inside a string is not JSON either, and a model writes one
+ * in a long note. Escape the breaks that sit inside a string.
+ */
+function escapeLineBreaks(text: string): string {
+	let out = '';
+	let inString = false;
+	let escaped = false;
+	for (const char of text) {
+		if (inString) {
+			if (escaped) escaped = false;
+			else if (char === '\\') escaped = true;
+			else if (char === '"') inString = false;
+			else if (char === '\n') {
+				out += '\\n';
+				continue;
+			} else if (char === '\r') continue;
+		} else if (char === '"') {
+			inString = true;
+		}
+		out += char;
+	}
+	return out;
+}
+
 /** `[1, 2,]` is not JSON, but it is what a model writes often enough. */
 function dropTrailingCommas(text: string): string {
 	return text.replace(/,(\s*[}\]])/g, '$1');
@@ -190,7 +244,7 @@ function cleanTokens(value: unknown): AnnotatedToken[] {
 		if (t === '') continue;
 
 		const token: AnnotatedToken = { t };
-		for (const key of ['pos', 'role', 'lemma', 'note'] as const) {
+		for (const key of ['pos', 'role', 'lemma', 'note', 'pron'] as const) {
 			const field = record[key];
 			if (typeof field === 'string' && field.trim() !== '') {
 				token[key] = field.trim();
@@ -199,6 +253,10 @@ function cleanTokens(value: unknown): AnnotatedToken[] {
 		if (token.role) token.role = token.role.toLowerCase();
 		if (token.pos) token.pos = token.pos.toLowerCase();
 
+		const tr = cleanTranslation(record['tr'] ?? record['translation']);
+		if (tr.length === 1) token.tr = tr[0];
+		else if (tr.length > 1) token.tr = tr;
+
 		const group = record['group'];
 		if (typeof group === 'number' && Number.isFinite(group)) {
 			token.group = group;
@@ -206,6 +264,15 @@ function cleanTokens(value: unknown): AnnotatedToken[] {
 		tokens.push(token);
 	}
 	return tokens;
+}
+
+/** `tr` as a list of non-empty pieces. A string or a list of strings is fine. */
+function cleanTranslation(value: unknown): string[] {
+	const pieces = Array.isArray(value) ? value : [value];
+	return pieces
+		.filter((piece): piece is string => typeof piece === 'string')
+		.map((piece) => piece.trim())
+		.filter((piece) => piece !== '');
 }
 
 /* ------------------------------------------------------------- aligning --- */
@@ -241,4 +308,82 @@ function align(
 		cursor = start + token.t.length;
 	}
 	return { placed, warnings };
+}
+
+/* -------------------------------------------------------------- linking --- */
+
+/**
+ * Find each token's `tr` in the gloss. The gloss has its own word order, so
+ * there is no cursor: each piece takes the first free place where it stands as
+ * whole words. Two tokens that name the same words, like the two halves of a
+ * split verb, share one place instead of failing.
+ */
+function link(
+	gloss: string,
+	placed: PlacedToken[],
+): { links: GlossLink[]; warnings: string[] } {
+	const links: GlossLink[] = [];
+	const warnings: string[] = [];
+
+	placed.forEach(({ token }, index) => {
+		if (token.tr === undefined) return;
+		const pieces = typeof token.tr === 'string' ? [token.tr] : token.tr;
+		for (const piece of pieces) {
+			const spot = findSpot(gloss, piece, links);
+			if (!spot) {
+				warnings.push(`"${piece}" is not in the translation.`);
+				continue;
+			}
+			const shared = links.find(
+				(other) => other.start === spot.start && other.end === spot.end,
+			);
+			if (shared) {
+				if (!shared.tokens.includes(index)) shared.tokens.push(index);
+			} else {
+				links.push({ ...spot, tokens: [index] });
+			}
+		}
+	});
+	links.sort((a, b) => a.start - b.start);
+	return { links, warnings };
+}
+
+/**
+ * Where a piece goes: a free place first, then a place another token already
+ * holds with the same words. Whole words beat a match inside a word, and the
+ * exact case beats any case.
+ */
+function findSpot(
+	gloss: string,
+	piece: string,
+	taken: GlossLink[],
+): { start: number; end: number } | null {
+	const lower = gloss.toLowerCase();
+	const needle = piece.toLowerCase();
+	const found: { start: number; end: number; rank: number }[] = [];
+
+	for (let at = lower.indexOf(needle); at !== -1; at = lower.indexOf(needle, at + 1)) {
+		const end = at + piece.length;
+		let rank = 0;
+		if (!isWholeWord(gloss, at, end)) rank += 2;
+		if (gloss.slice(at, end) !== piece) rank += 1;
+		found.push({ start: at, end, rank });
+	}
+	found.sort((a, b) => a.rank - b.rank || a.start - b.start);
+
+	const free = found.find((spot) =>
+		taken.every((link) => spot.end <= link.start || spot.start >= link.end),
+	);
+	if (free) return free;
+	return (
+		found.find((spot) =>
+			taken.some((link) => link.start === spot.start && link.end === spot.end),
+		) ?? null
+	);
+}
+
+const WORD_CHAR = /[\p{L}\p{N}]/u;
+
+function isWholeWord(text: string, start: number, end: number): boolean {
+	return !WORD_CHAR.test(text.charAt(start - 1)) && !WORD_CHAR.test(text.charAt(end));
 }

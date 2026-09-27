@@ -39,6 +39,10 @@ export interface LanguageLearningSettings {
 	keepIndexNote: boolean;
 	/** Role colours the user changed. Untouched roles are not listed. */
 	roleColours: Record<string, string>;
+	/** Program that grabs frames and reads embedded subtitles. */
+	ffmpegPath: string;
+	/** Vault folder for movie thumbnails and extracted subtitles. */
+	cacheFolder: string;
 }
 
 export const DEFAULT_SETTINGS: LanguageLearningSettings = {
@@ -57,6 +61,8 @@ export const DEFAULT_SETTINGS: LanguageLearningSettings = {
 	indexSweepMinutes: 2,
 	keepIndexNote: true,
 	roleColours: {},
+	ffmpegPath: 'ffmpeg',
+	cacheFolder: '_cache/language-learning',
 };
 
 export class LanguageLearningSettingTab extends PluginSettingTab {
@@ -206,6 +212,43 @@ export class LanguageLearningSettingTab extends PluginSettingTab {
 					.setValue(this.plugin.settings.imageFormat)
 					.onChange(async (value) => {
 						this.plugin.settings.imageFormat = value as ImageFormat;
+						await this.plugin.savePluginData();
+					}),
+			);
+
+		new Setting(containerEl).setName('Movie').setHeading();
+
+		new Setting(containerEl)
+			.setName('ffmpeg path')
+			.setDesc(
+				'Used for movie thumbnails and for subtitles inside the video ' +
+					'file. Leave it as "ffmpeg" if it is on your PATH; otherwise ' +
+					'give the full path to ffmpeg.exe. ffprobe must sit beside it. ' +
+					'Thumbnails use the image size and quality set above.',
+			)
+			.addText((text) =>
+				text
+					.setPlaceholder('ffmpeg')
+					.setValue(this.plugin.settings.ffmpegPath)
+					.onChange(async (value) => {
+						this.plugin.settings.ffmpegPath = value.trim() || 'ffmpeg';
+						await this.plugin.savePluginData();
+					}),
+			);
+
+		new Setting(containerEl)
+			.setName('Cache folder')
+			.setDesc(
+				'Vault folder for movie thumbnails and for subtitles taken out ' +
+					'of video files. Everything in it can be made again.',
+			)
+			.addText((text) =>
+				text
+					.setPlaceholder('_cache/language-learning')
+					.setValue(this.plugin.settings.cacheFolder)
+					.onChange(async (value) => {
+						this.plugin.settings.cacheFolder =
+							value.trim().replace(/^\/+|\/+$/g, '') || '_cache/language-learning';
 						await this.plugin.savePluginData();
 					}),
 			);

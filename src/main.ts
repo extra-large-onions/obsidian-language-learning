@@ -25,15 +25,23 @@ import { SentenceView } from './sentence/view';
 import {
 	CHAPTER_VIEW_TYPE,
 	HOVER_SOURCE,
+	MOVIE_BLOCK_LANG,
+	MOVIE_PLAYER_VIEW_TYPE,
 	SENTENCE_BLOCK_LANG,
 } from './utils/constants';
 import { PluginData } from './types';
+import { MoviePlayer } from './movie/player';
+import { SubtitleStore } from './movie/tracks';
+import { MovieBlockView } from './movie/block';
+import { MoviePlayerTab } from './movie/player-tab';
 
 export default class LanguageLearningPlugin extends Plugin {
 	settings!: LanguageLearningSettings;
 	state!: ChapterStateStore;
 	reviews!: ReviewStore;
 	index!: CardIndex;
+	subtitles!: SubtitleStore;
+	player!: MoviePlayer;
 
 	async onload() {
 		await this.loadPluginData();
@@ -72,6 +80,21 @@ export default class LanguageLearningPlugin extends Plugin {
 			SENTENCE_BLOCK_LANG,
 			(source, el, ctx) => {
 				ctx.addChild(new SentenceView(this, source, el, ctx.sourcePath));
+			},
+		);
+
+		// A floating movie player, and blocks that point at moments in it.
+		this.subtitles = new SubtitleStore(this);
+		this.player = new MoviePlayer(this);
+		this.register(() => this.player.close(false));
+		this.registerView(
+			MOVIE_PLAYER_VIEW_TYPE,
+			(leaf) => new MoviePlayerTab(leaf, this),
+		);
+		this.registerMarkdownCodeBlockProcessor(
+			MOVIE_BLOCK_LANG,
+			(source, el, ctx) => {
+				ctx.addChild(new MovieBlockView(this, source, el, ctx.sourcePath));
 			},
 		);
 

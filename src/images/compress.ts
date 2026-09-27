@@ -123,7 +123,7 @@ async function encode(
 	return first;
 }
 
-function toBlob(
+export function toBlob(
 	canvas: HTMLCanvasElement,
 	type: string,
 	quality: number,
